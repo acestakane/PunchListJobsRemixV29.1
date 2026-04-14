@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Query
 from database import db
-from auth import get_current_user, user_to_response
+from auth import get_current_user, user_to_response, get_optional_user
 from models import ProfileUpdate, LocationUpdate, OnlineStatusUpdate, CrewRequest, ContactUnlockRequest
 from utils.analytics_service import increment_profile_views
 from typing import Optional
@@ -169,9 +169,9 @@ async def verify_email(data: dict, current_user: dict = Depends(get_current_user
 async def get_public_profile(
     user_id: str,
     job_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: Optional[dict] = Depends(get_optional_user)
 ):
-    """Get a user's public profile. Pass job_id to apply pending-status masking."""
+    """Get a user's public profile. Works without authentication (contact info hidden by default)."""
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -181,24 +181,23 @@ async def get_public_profile(
     profile = user_to_response(user)
     profile["recent_ratings"] = recent_ratings
 
-    caller_id = current_user["id"]
-    
+    caller_id = current_user["id"] if current_user else None
+
     # Determine if we should hide contact info
-    # For CREW profiles: hide contact by default unless unlocked or own profile
     viewing_crew_profile = user.get("role") == "crew"
     is_own_profile = user_id == caller_id
 
     # Check if viewer has an active contact unlock for this user (7-day access)
     has_contact_unlock = False
     unlock_expires_at = None
-    
-    if viewing_crew_profile and not is_own_profile:
+
+    if viewing_crew_profile and not is_own_profile and caller_id:
         unlock_record = await db.contact_unlocks.find_one({
             "viewer_id": caller_id,
             "target_user_id": user_id,
             "expires_at": {"$gte": datetime.now(timezone.utc).isoformat()}
         }, {"_id": 0})
-        
+
         if unlock_record:
             has_contact_unlock = True
             unlock_expires_at = unlock_record.get("expires_at")
@@ -206,7 +205,7 @@ async def get_public_profile(
     # Contact masking: for crew viewing a contractor via a job, hide phone/email
     # unless they are accepted OR have a paid reveal for that specific job.
     has_paid_reveal = False
-    is_crew_job_view = bool(job_id) and current_user.get("role") == "crew" and user_id != caller_id
+    is_crew_job_view = bool(job_id) and current_user is not None and current_user.get("role") == "crew" and user_id != caller_id
 
     if is_crew_job_view:
         job_doc = await db.jobs.find_one(

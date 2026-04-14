@@ -378,6 +378,14 @@ export default function ProfilePage() {
   const displayAddress = user?.address || "Not set";
 
   // Read-only mode when viewing another user's profile
+  if (userId && !viewingUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-[#020617] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#0000FF]" />
+      </div>
+    );
+  }
+
   if (userId && viewingUser) {
     const vu = viewingUser;
     const vuPhoto = vu.profile_photo || vu.logo;
@@ -412,7 +420,7 @@ export default function ProfilePage() {
             </div>
             <h2 className="font-extrabold text-[#050A30] dark:text-white text-2xl mb-1" style={{ fontFamily: "Manrope, sans-serif" }}>{vu.name}</h2>
             <p className="text-slate-500 capitalize">
-              {vu.role}{vu.trade ? ` · ${vu.trade}` : ""}
+              {vu.role}{(vu.discipline || vu.trade) ? ` · ${vu.discipline || vu.trade}` : ""}
               {(vu.location?.city || vu.address) && (
                 <span className="ml-1 text-slate-400">
                   · {vu.location?.city

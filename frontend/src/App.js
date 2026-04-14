@@ -93,7 +93,7 @@ function AppRoutes() {
           <ProtectedRoute roles={["admin","superadmin","subadmin"]}><AdminDashboard /></ProtectedRoute>
         } />
         <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-        <Route path="/profile/:userId" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        <Route path="/profile/:userId" element={<ProfilePage />} />
         <Route path="/subscription" element={<ProtectedRoute><SubscriptionPage /></ProtectedRoute>} />
         <Route path="/pay-history" element={<ProtectedRoute><PayHistoryPage /></ProtectedRoute>} />
         <Route path="/messages" element={<ProtectedRoute><MessagesPage /></ProtectedRoute>} />

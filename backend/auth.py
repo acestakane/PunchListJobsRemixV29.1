@@ -13,6 +13,25 @@ EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer()
+bearer_scheme_optional = HTTPBearer(auto_error=False)
+
+
+async def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme_optional),
+) -> Optional[dict]:
+    """Like get_current_user but returns None instead of raising 401."""
+    if not credentials:
+        return None
+    payload = decode_token(credentials.credentials)
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user or not user.get("is_active", True):
+        return None
+    return user
 
 ADMIN_ROLES = ("admin", "superadmin")
 
