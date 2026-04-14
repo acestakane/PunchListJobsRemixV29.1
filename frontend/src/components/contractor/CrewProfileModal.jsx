@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { X, Star, MapPin, Phone, Copy, ExternalLink, Unlock, Lock } from "lucide-react";
+import { X, Star, MapPin, Phone, Copy, ExternalLink, Unlock, Lock, Car } from "lucide-react";
 import axios from "axios";
 import { getErr } from "../../utils/errorUtils";
 
@@ -10,6 +10,13 @@ export function CrewProfileModal({ userId, onClose }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [unlocking, setUnlocking] = useState(false);
+  const [showTravel, setShowTravel] = useState(true);
+
+  useEffect(() => {
+    axios.get(`${API}/settings/public`).then(r => {
+      setShowTravel(r.data.show_travel_distance !== false);
+    }).catch(() => {});
+  }, []);
 
   const fetchProfile = () => {
     axios.get(`${API}/users/public/${userId}`)
@@ -159,6 +166,27 @@ export function CrewProfileModal({ userId, onClose }) {
 
         {profile.bio && (
           <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 line-clamp-3">{profile.bio}</p>
+        )}
+
+        {/* Travel / Transportation — admin-controlled visibility */}
+        {showTravel && (profile.transportation_type || profile.availability !== undefined) && (
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg" data-testid="travel-distance-section">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <Car className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Travel Info</span>
+            </div>
+            {profile.transportation_type && (
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                <span className="font-medium">Transport:</span> {profile.transportation_type}
+              </p>
+            )}
+            <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">
+              <span className="font-medium">Availability:</span>{" "}
+              <span className={profile.availability ? "text-green-600 dark:text-green-400" : "text-slate-400"}>
+                {profile.availability ? "Available" : "Unavailable"}
+              </span>
+            </p>
+          </div>
         )}
         {profile.skills?.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-4">

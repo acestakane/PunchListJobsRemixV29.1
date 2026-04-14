@@ -72,7 +72,7 @@ async def public_settings():
         return defaults
     public_keys = (
         "show_verification_sidebar", "accent_color", "brand_color", "nav_bg_color",
-        "site_name", "tagline", "enable_crew_transportation_type"
+        "site_name", "tagline", "enable_crew_transportation_type", "show_travel_distance"
     )
     result = {k: v for k, v in settings.items() if k.startswith("social_") or k in public_keys}
     return {**defaults, **result}
@@ -491,6 +491,7 @@ async def startup_event():
             "nav_bg_color": "#1D4ED8",
             "site_name": "PunchListJobs",
             "tagline": "A Blue Collar ME Company",
+            "show_travel_distance": True,
         })
         logger.info("Default settings created")
     else:
@@ -511,6 +512,8 @@ async def startup_event():
             updates["site_name"] = "PunchListJobs"
         if "tagline" not in existing_settings:
             updates["tagline"] = "A Blue Collar ME Company"
+        if "show_travel_distance" not in existing_settings:
+            updates["show_travel_distance"] = True
         if updates:
             await db.settings.update_one({}, {"$set": updates})
 

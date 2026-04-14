@@ -298,6 +298,7 @@ class SettingsUpdate(BaseModel):
     site_name: Optional[str] = None
     tagline: Optional[str] = None
     enable_crew_transportation_type: Optional[bool] = None
+    show_travel_distance: Optional[bool] = None
 
 
 class CouponCreate(BaseModel):

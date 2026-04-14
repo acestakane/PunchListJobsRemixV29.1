@@ -12,6 +12,10 @@ from utils.matching import sort_jobs_for_crew
 from utils.subscription import check_and_enforce_limit, increment_usage
 from utils.notify import create_notification
 from utils.activity_log import log_activity
+from utils.job_helpers import (
+    assert_rating_allowed, assert_rating_status, assert_job_participant,
+    assert_stars_valid, RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES,
+)
 from typing import Optional
 import logging
 
@@ -174,12 +178,12 @@ async def jobs_itinerary(current_user: dict = Depends(get_current_user)):
     uid = current_user["id"]
     role = current_user["role"]
     # Include completed/past jobs so they appear in the Past Jobs pane
-    active_statuses = ["fulfilled", "in_progress", "completed_pending_review", "suspended", "completed", "past"]
+    active_statuses = ACTIVE_STATUSES
 
     # ── Auto-archive stale terminal jobs (lazy eval, Issue 4) ─────────────────
     AUTO_ARCHIVE_HOURS = 48
     threshold = (datetime.now(timezone.utc) - timedelta(hours=AUTO_ARCHIVE_HOURS)).isoformat()
-    stale_statuses = ["suspended", "cancelled", "completed_pending_review", "past"]
+    stale_statuses = STALE_STATUSES
     await db.jobs.update_many(
         {
             "status": {"$in": stale_statuses},
@@ -1434,23 +1438,11 @@ async def rate_user(job_id: str, data: RatingCreate, current_user: dict = Depend
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Block rating for duplicated jobs or jobs marked as rating_completed
-    if job.get("rating_completed", False):
-        raise HTTPException(
-            status_code=400,
-            detail="Ratings are disabled for this job (duplicated or previously completed)"
-        )
-    
-    if job["status"] not in ("completed", "completed_pending_review", "past"):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Job must be completed before rating. Current status: {job['status']}"
-        )
+    assert_rating_allowed(job)
+    assert_rating_status(job, action="rate")
 
     # Verify rater was part of this job
-    is_contractor = job["contractor_id"] == current_user["id"]
-    is_crew = current_user["id"] in job.get("crew_accepted", [])
-    if not (is_contractor or is_crew):
-        raise HTTPException(status_code=403, detail="Not part of this job")
+    is_contractor, is_crew = assert_job_participant(job, current_user["id"])
 
     # Validate rated user was part of the job
     if is_contractor and data.rated_id not in job.get("crew_accepted", []):
@@ -1480,8 +1472,7 @@ async def rate_user(job_id: str, data: RatingCreate, current_user: dict = Depend
     if existing:
         raise HTTPException(status_code=400, detail="Already rated this person for this job")
 
-    if not 1 <= data.stars <= 5:
-        raise HTTPException(status_code=400, detail="Stars must be between 1 and 5")
+    assert_stars_valid(data.stars)
 
     rating_doc = {
         "id": str(uuid.uuid4()),
@@ -1538,20 +1529,10 @@ async def skip_rating(job_id: str, data: SkipRatingRequest, current_user: dict =
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Block skip rating for duplicated jobs or jobs marked as rating_completed
-    if job.get("rating_completed", False):
-        raise HTTPException(
-            status_code=400,
-            detail="Ratings are disabled for this job (duplicated or previously completed)"
-        )
-    
-    if job["status"] not in ("completed", "completed_pending_review", "past"):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Can only skip rating after job completion. Current status: {job['status']}"
-        )
+    assert_rating_allowed(job)
+    assert_rating_status(job, action="skip")
 
-    is_contractor = job["contractor_id"] == current_user["id"]
-    is_crew = current_user["id"] in job.get("crew_accepted", [])
+    is_contractor, is_crew = assert_job_participant(job, current_user["id"])
 
     if is_contractor:
         # Contractor skipping a crew member rating
