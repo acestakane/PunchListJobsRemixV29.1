@@ -75,7 +75,14 @@ class ProfileUpdate(BaseModel):
     email: Optional[str] = None
     transportation_type: Optional[str] = None
     travel_radius_miles: Optional[int] = Field(None, ge=0, le=500)
-    
+
+    @field_validator('travel_radius_miles', mode='before')
+    @classmethod
+    def coerce_empty_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        return v
+
     @field_validator('name', 'first_name', 'last_name', 'bio', 'address', 'company_name', mode='before')
     @classmethod
     def sanitize_text_fields(cls, v):

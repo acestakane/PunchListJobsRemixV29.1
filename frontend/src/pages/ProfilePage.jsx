@@ -250,6 +250,7 @@ export default function ProfilePage() {
       const payload = {
         ...form,
         name: `${form.first_name} ${form.last_name}`.trim() || form.name,
+        travel_radius_miles: form.travel_radius_miles === "" ? null : form.travel_radius_miles,
       };
       const res = await axios.put(`${API}/users/profile`, payload);
       if (res.data.needs_verification) {
