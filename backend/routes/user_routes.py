@@ -457,9 +457,14 @@ async def search_crew(
     radius: Optional[float] = 50,
     available_only: bool = True,
     smart_match: bool = False,
+    min_travel_radius: Optional[int] = None,
     current_user: dict = Depends(get_current_user)
 ):
     query = {"role": "crew", "is_active": True}
+
+    # Travel radius filter — only return crew willing to travel at least N miles
+    if min_travel_radius:
+        query["travel_radius_miles"] = {"$gte": min_travel_radius}
 
     # Discipline filter (level 1)
     if discipline:

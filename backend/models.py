@@ -74,6 +74,7 @@ class ProfileUpdate(BaseModel):
     hide_location: Optional[bool] = None
     email: Optional[str] = None
     transportation_type: Optional[str] = None
+    travel_radius_miles: Optional[int] = Field(None, ge=0, le=500)
     
     @field_validator('name', 'first_name', 'last_name', 'bio', 'address', 'company_name', mode='before')
     @classmethod

@@ -166,6 +166,7 @@ export default function ProfilePage() {
         address: user.address || "",
         email: user.email || "",
         transportation_type: user.transportation_type || "",
+        travel_radius_miles: user.travel_radius_miles ?? "",
       });
       setPortfolio(user.portfolio_images || []);
       fetchReferralInfo();
@@ -742,6 +743,23 @@ export default function ProfilePage() {
                     </div>
                   )}
 
+                  {user?.role === "crew" && (
+                    <div>
+                      <label className="block text-sm font-semibold text-[#050A30] dark:text-white mb-1">
+                        Travel Radius (miles)
+                      </label>
+                      <input
+                        type="number" min="0" max="500"
+                        value={form.travel_radius_miles}
+                        onChange={e => setForm(f => ({ ...f, travel_radius_miles: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        placeholder="e.g. 50"
+                        className="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#0000FF] dark:bg-slate-800 dark:text-white"
+                        data-testid="profile-travel-radius-input"
+                      />
+                      <p className="text-xs text-slate-400 mt-1">How far are you willing to travel for a job?</p>
+                    </div>
+                  )}
+
                   {user?.role === "contractor" && (
                     <div className="space-y-4">
                       <div>
@@ -818,6 +836,14 @@ export default function ProfilePage() {
                       <span className="text-sm text-slate-500 w-20 flex-shrink-0">Transport</span>
                       <span className="text-sm font-semibold text-[#050A30] dark:text-white" data-testid="profile-transportation-display">
                         {user.transportation_type}
+                      </span>
+                    </div>
+                  )}
+                  {user?.role === "crew" && user?.travel_radius_miles != null && user.travel_radius_miles !== "" && (
+                    <div className="flex items-center gap-3 py-2 border-b border-slate-100 dark:border-slate-800">
+                      <span className="text-sm text-slate-500 w-20 flex-shrink-0">Travel</span>
+                      <span className="text-sm font-semibold text-[#050A30] dark:text-white" data-testid="profile-travel-radius-display">
+                        Up to {user.travel_radius_miles} miles
                       </span>
                     </div>
                   )}

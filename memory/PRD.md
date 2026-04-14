@@ -35,14 +35,11 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - Added toggle in Admin SettingsTab.jsx under "Crew Features" section
 - Updated CrewProfileModal.jsx to fetch public settings and conditionally render travel/transportation info when enabled
 
-### 2026-04-14 — Phase 8: Code Refactor (P3)
-- Created `backend/utils/job_helpers.py` with:
-  - `RATING_VALID_STATUSES`, `ACTIVE_STATUSES`, `STALE_STATUSES` constants
-  - `assert_rating_allowed()`, `assert_rating_status()`, `assert_job_participant()`, `assert_stars_valid()` helpers
-- Refactored `job_routes.py`:
-  - `rate_user()` uses helpers (removed ~15 lines of duplicate validation)
-  - `skip_rating()` uses helpers (removed ~15 lines of duplicate validation)
-  - `jobs_itinerary()` uses `ACTIVE_STATUSES` / `STALE_STATUSES` constants
+### 2026-04-14 — Phase 8: Code Refactor (P3) + Travel Radius Feature (Complete)
+- Created `backend/utils/job_helpers.py` with RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES constants + 4 guard helpers
+- Refactored `job_routes.py`: rate_user() and skip_rating() each trimmed ~15 lines of duplicate validation; status constants shared
+- ContractorDashboard.jsx: 7 repetitive status transition functions consolidated into single `jobAction` helper (~45 lines removed)
+- Travel Radius end-to-end: `travel_radius_miles` field in models.py, `min_travel_radius` query filter in user_routes.py, ProfilePage edit+view, CrewProfileModal display, ContractorDashboard crew search dropdown
 
 ## Prioritized Backlog
 
@@ -50,13 +47,13 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - None
 
 ### P1 — High Priority
-- Contractor login UI redirect investigation (minor frontend race condition found in testing)
+- None outstanding
 
-### P2 — Medium Priority  
-- Phase 7 done ✅
+### P2 — Medium Priority
+- Phase 7 done
+- Phase 8 done
 
 ### P3 — Low Priority / Tech Debt
-- Phase 8 partial ✅ (ContractorDashboard.jsx state transitions not yet simplified)
 - Email notifications (send_job_completion_email is wired but SMTP not configured)
 - Square payment live keys when ready
 

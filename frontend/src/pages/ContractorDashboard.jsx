@@ -36,7 +36,7 @@ export default function ContractorDashboard() {
   const { addListener, connected, pushAlert } = useWebSocket();
   const [jobs, setJobs] = useState([]);
   const [crew, setCrew] = useState([]);
-  const [crewSearch, setCrewSearch] = useState({ name: "", trade: "", address: "" });
+  const [crewSearch, setCrewSearch] = useState({ name: "", trade: "", address: "", min_travel_radius: "" });
   const [crewSmartMatch, setCrewSmartMatch] = useState(false);
   const [grouped, setGrouped] = useState([]);
   const [showJobForm, setShowJobForm] = useState(false);
@@ -86,6 +86,7 @@ export default function ContractorDashboard() {
         }
       }
       if (crewSearch.address) params.append("address", crewSearch.address);
+      if (crewSearch.min_travel_radius) params.append("min_travel_radius", crewSearch.min_travel_radius);
       if (crewSmartMatch) params.append("smart_match", "true");
       const res = await axios.get(`${API}/users/crew?${params}`);
       setCrew(res.data);
@@ -225,21 +226,27 @@ export default function ContractorDashboard() {
     } catch (e) { toast.error(getErr(e, "Failed to duplicate")); }
   };
 
-  const startJob = async (jobId) => {
+  // ─── Job status transition helper ──────────────────────────────────────────
+  const jobAction = useCallback(async (method, path, successMsg, errMsg, onSuccess) => {
     try {
-      await axios.post(`${API}/jobs/${jobId}/start`);
-      toast.success("Job started!");
+      method === "delete" ? await axios.delete(path) : await axios.post(path);
+      toast.success(successMsg);
       fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed")); }
-  };
+      onSuccess?.();
+    } catch (e) { toast.error(getErr(e, errMsg)); }
+  }, [fetchJobs]);
 
-  const verifyJob = async (jobId) => {
-    try {
-      await axios.post(`${API}/jobs/${jobId}/verify`);
-      toast.success("Job verified and completed!");
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed")); }
-  };
+  const startJob      = (id) => jobAction("post",   `${API}/jobs/${id}/start`,      "Job started!",                           "Failed");
+  const verifyJob     = (id) => jobAction("post",   `${API}/jobs/${id}/verify`,     "Job verified and completed!",            "Failed");
+  const cancelJob     = (id) => jobAction("post",   `${API}/jobs/${id}/cancel`,     "Job cancelled. Crew has been notified.", "Failed to cancel");
+  const suspendJob    = (id) => jobAction("post",   `${API}/jobs/${id}/suspend`,    "Job suspended. Crew has been notified.", "Failed to suspend");
+  const reactivateJob = (id) => jobAction("post",   `${API}/jobs/${id}/reactivate`, "Job reactivated. Crew has been notified.", "Failed to reactivate");
+  const archiveCancelledJob = (id) => jobAction("post", `${API}/jobs/${id}/archive`, "Job archived.", "Failed to archive");
+  const deleteJobConfirmed = () => confirmDeleteId && jobAction(
+    "delete", `${API}/jobs/${confirmDeleteId}`,
+    "Job archived — find it in Job Archive.", "Failed to archive",
+    () => setConfirmDeleteId(null)
+  );
 
   const submitRatings = async (job, ratings, reviews, skippedSet = new Set()) => {
     if (!job?.id) {
@@ -374,47 +381,7 @@ export default function ContractorDashboard() {
     }
   };
 
-  const cancelJob = async (jobId) => {
-    try {
-      await axios.post(`${API}/jobs/${jobId}/cancel`);
-      toast.success("Job cancelled. Crew has been notified.");
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed to cancel")); }
-  };
-
-  const suspendJob = async (jobId) => {
-    try {
-      await axios.post(`${API}/jobs/${jobId}/suspend`);
-      toast.success("Job suspended. Crew has been notified.");
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed to suspend")); }
-  };
-
-  const reactivateJob = async (jobId) => {
-    try {
-      await axios.post(`${API}/jobs/${jobId}/reactivate`);
-      toast.success("Job reactivated. Crew has been notified.");
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed to reactivate")); }
-  };
-
-  const deleteJobConfirmed = async () => {
-    if (!confirmDeleteId) return;
-    try {
-      await axios.delete(`${API}/jobs/${confirmDeleteId}`);
-      toast.success("Job archived — find it in Job Archive.");
-      setConfirmDeleteId(null);
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed to archive")); }
-  };
-
-  const archiveCancelledJob = async (jobId) => {
-    try {
-      await axios.post(`${API}/jobs/${jobId}/archive`);
-      toast.success("Job archived.");
-      fetchJobs();
-    } catch (e) { toast.error(getErr(e, "Failed to archive")); }
-  };
+  // (cancelJob, suspendJob, reactivateJob, deleteJobConfirmed, archiveCancelledJob consolidated above via jobAction)
 
   const copyJobToForm = (job) => {
     setJobForm({
@@ -591,6 +558,16 @@ export default function ContractorDashboard() {
                     className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:border-[#0000FF] dark:bg-slate-800 dark:text-white"
                     data-testid="crew-search-location" />
                 </div>
+                <select
+                  value={crewSearch.min_travel_radius}
+                  onChange={e => setCrewSearch(s => ({ ...s, min_travel_radius: e.target.value }))}
+                  className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#0000FF] dark:bg-slate-800 dark:text-white"
+                  data-testid="crew-search-travel-radius">
+                  <option value="">Any Travel Range</option>
+                  {[10, 25, 50, 100, 200].map(m => (
+                    <option key={m} value={m}>Travels {m}+ miles</option>
+                  ))}
+                </select>
                 <div className="flex gap-2">
                   <button onClick={fetchCrew}
                     className="flex-1 bg-[#0000FF] text-white py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors"

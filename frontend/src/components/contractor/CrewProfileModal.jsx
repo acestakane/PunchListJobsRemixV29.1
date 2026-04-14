@@ -169,7 +169,7 @@ export function CrewProfileModal({ userId, onClose }) {
         )}
 
         {/* Travel / Transportation — admin-controlled visibility */}
-        {showTravel && (profile.transportation_type || profile.availability !== undefined) && (
+        {showTravel && (profile.transportation_type || profile.travel_radius_miles != null || profile.availability !== undefined) && (
           <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg" data-testid="travel-distance-section">
             <div className="flex items-center gap-1.5 mb-1.5">
               <Car className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
@@ -178,6 +178,12 @@ export function CrewProfileModal({ userId, onClose }) {
             {profile.transportation_type && (
               <p className="text-sm text-slate-700 dark:text-slate-300">
                 <span className="font-medium">Transport:</span> {profile.transportation_type}
+              </p>
+            )}
+            {profile.travel_radius_miles != null && profile.travel_radius_miles !== "" && (
+              <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5" data-testid="crew-travel-radius">
+                <span className="font-medium">Travel Range:</span>{" "}
+                <span className="text-blue-600 dark:text-blue-400 font-semibold">Up to {profile.travel_radius_miles} miles</span>
               </p>
             )}
             <p className="text-sm text-slate-700 dark:text-slate-300 mt-0.5">
