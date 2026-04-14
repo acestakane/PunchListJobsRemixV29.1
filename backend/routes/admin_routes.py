@@ -741,3 +741,51 @@ async def admin_payments_history(admin: dict = Depends(require_admin)):
             "all_time": all_time,
         },
     }
+
+
+
+# ── Email admin endpoints ─────────────────────────────────────────────────────
+
+@router.get("/email/status")
+async def email_status(admin: dict = Depends(require_admin)):
+    """Return current email delivery mode and configuration status."""
+    from utils.email_utils import _active_mode, RESEND_API_KEY, SMTP_HOST, SMTP_USER, SENDER_EMAIL
+    mode = _active_mode()
+    return {
+        "mode": mode,
+        "sender_email": SENDER_EMAIL,
+        "resend_configured": bool(RESEND_API_KEY),
+        "smtp_configured": bool(SMTP_HOST and SMTP_USER),
+        "production_ready": mode != "mock",
+        "note": (
+            "Live: emails are being sent via Resend." if mode == "resend" else
+            "Live: emails are being sent via SMTP." if mode == "smtp" else
+            "Mock mode: emails are logged but NOT sent. Add RESEND_API_KEY or SMTP credentials to go live."
+        ),
+    }
+
+
+@router.get("/email/mock-log")
+async def email_mock_log(admin: dict = Depends(require_admin)):
+    """Return the last 50 emails that would have been sent (mock mode only)."""
+    from utils.email_utils import mock_email_log
+    return {"count": len(mock_email_log), "emails": list(mock_email_log)}
+
+
+@router.post("/email/send-test")
+async def send_test_email(data: dict, admin: dict = Depends(require_admin)):
+    """Send a test email to verify configuration. Body: {to: str}"""
+    from utils.email_utils import send_email, _wrap_template, _active_mode
+    to = data.get("to", admin.get("email", ""))
+    if not to:
+        raise HTTPException(status_code=400, detail="'to' email required")
+    mode = _active_mode()
+    body = f"""
+      <h2 style="margin:0 0 12px;color:#0f172a;font-size:20px;">Test Email</h2>
+      <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+        This is a test email from <strong>PunchListJobs</strong>.<br>
+        Delivery mode: <strong>{mode.upper()}</strong>
+      </p>
+      <p style="color:#94a3b8;font-size:13px;margin:0;">Sent by admin: {admin.get('email')}</p>"""
+    ok = await send_email(to, "PunchListJobs — Test Email", _wrap_template("Test Email", body))
+    return {"success": ok, "mode": mode, "to": to}
