@@ -10,14 +10,16 @@ from fastapi import HTTPException
 STARS_MIN = 1
 STARS_MAX = 5
 
-# Statuses that allow rating / skip-rating actions
-RATING_VALID_STATUSES = ("completed", "completed_pending_review", "past")
+# Statuses that allow rating / skip-rating actions (HARD GATE — spec §6)
+RATING_VALID_STATUSES = ("completed", "cancelled", "suspended")
+
+# Statuses from which a job can be cancelled
+CANCELLABLE_STATUSES = ("open", "fulfilled", "suspended", "in_progress", "pending_complete")
 
 # ─── Job Status Groups ────────────────────────────────────────────────────────
 
-ACTIVE_STATUSES = ["fulfilled", "in_progress", "completed_pending_review", "suspended", "completed", "past"]
-STALE_STATUSES  = ["suspended", "cancelled", "completed_pending_review", "past"]
-CANCELLABLE_STATUSES = ("open", "fulfilled", "suspended", "in_progress")
+ACTIVE_STATUSES = ["fulfilled", "in_progress", "pending_complete", "suspended", "completed", "past"]
+STALE_STATUSES  = ["suspended", "cancelled", "pending_complete", "past"]
 
 
 # ─── Rating Guards ────────────────────────────────────────────────────────────

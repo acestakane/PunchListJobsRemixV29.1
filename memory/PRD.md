@@ -35,7 +35,15 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - Added toggle in Admin SettingsTab.jsx under "Crew Features" section
 - Updated CrewProfileModal.jsx to fetch public settings and conditionally render travel/transportation info when enabled
 
-### 2026-04-14 — Phase 8: Code Refactor (P3) + Travel Radius Feature (Complete)
+### 2026-04-14 — Job Lifecycle Refactor (Spec-Compliant)
+- **New `utils/assignment_helpers.py`**: CrewAssignment state machine (assigned→pending_complete→approved_complete|removed), `maybe_complete_job`, `force_close_assignments`, `log_status_history`, `get_or_create_assignment`
+- **New `crew_assignments` collection**: Unique(job_id, crew_id), indexed on status/pending_complete_at
+- **New `status_history` collection**: Append-only audit log for every state transition
+- **`job_helpers.py`**: `RATING_VALID_STATUSES = (completed, cancelled, suspended)` — eliminates premature ratings
+- **`job_routes.py`**: `crew-complete` rewritten (idempotent, assignment-backed), new `approve-complete` per-crew, new `remove` endpoint, `cancel_job` + `suspend_job` call `force_close_assignments`, `verify_job` uses `maybe_complete_job`
+- **`server.py`**: DB indices, startup migration (legacy crew_accepted → assignments), `auto_approve_pending_crew()` 72h scheduler
+- **`JobsItinerary.jsx`**: Premature rating removed from `handleCrewComplete`, PAST_STATUSES uses `my_assignment_status`, per-crew Approve buttons for contractor when `pending_complete`, `crewCompleteLoading` debounce guard
+- **`ContractorDashboard.jsx`**: `approveCrewComplete` helper, `pending_complete` label, per-crew approval panel
 - Created `backend/utils/job_helpers.py` with RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES constants + 4 guard helpers
 - Refactored `job_routes.py`: rate_user() and skip_rating() each trimmed ~15 lines of duplicate validation; status constants shared
 - ContractorDashboard.jsx: 7 repetitive status transition functions consolidated into single `jobAction` helper (~45 lines removed)

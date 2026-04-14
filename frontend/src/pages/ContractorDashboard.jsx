@@ -19,13 +19,14 @@ import axios from "axios";
 import {
   Search, Plus, Zap, Users, ClipboardList, Star, MapPin, X, AlertTriangle,
   AlertCircle, Eye, Share2, UserCheck, Clock, PauseCircle, PlayCircle,
-  Ban, Trash2, Archive, MessageCircle, Copy,
+  Ban, Trash2, Archive, MessageCircle, Copy, CheckCircle,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const STATUS_LABELS = {
   open: "Posted", fulfilled: "Accepted", in_progress: "In Progress",
+  pending_complete: "Pending Approval",
   completed_pending_review: "Completed", completed: "Verified",
   suspended: "Suspended", cancelled: "Cancelled", draft: "Draft",
 };
@@ -225,6 +226,15 @@ export default function ContractorDashboard() {
       fetchJobs();
     } catch (e) { toast.error(getErr(e, "Failed to duplicate")); }
   };
+
+  // ─── Crew approval helper ──────────────────────────────────────────────────
+  const approveCrewComplete = useCallback(async (jobId, crewId, crewName) => {
+    try {
+      const { data } = await axios.post(`${API}/jobs/${jobId}/crew/${crewId}/approve-complete`);
+      toast.success(data.job_completed ? "All crew approved — Job completed!" : `${crewName || "Crew"} completion approved`);
+      fetchJobs();
+    } catch (e) { toast.error(getErr(e, "Approval failed")); }
+  }, [fetchJobs]);
 
   // ─── Job status transition helper ──────────────────────────────────────────
   const jobAction = useCallback(async (method, path, successMsg, errMsg, onSuccess) => {
@@ -681,6 +691,15 @@ export default function ContractorDashboard() {
                         {job.crew_pending.length} Pending
                       </button>
                     )}
+                    {/* Pending Approval — per-crew completion approvals (spec §2) */}
+                    {job.status === "pending_complete" && (
+                      <button onClick={() => { setApplicantsJob(applicantsJob === job.id ? null : job.id); if (applicantsJob !== job.id) fetchApplicants(job.id); }}
+                        className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold transition-colors ${applicantsJob === job.id ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}`}
+                        data-testid={`approve-complete-btn-${job.id}`}>
+                        <CheckCircle className="w-3 h-3" />
+                        Approve Completion
+                      </button>
+                    )}
                     {job.cancel_requests?.length > 0 && (
                       <button onClick={() => setCancelReqJob(cancelReqJob === job.id ? null : job.id)}
                         className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-bold transition-colors ${cancelReqJob === job.id ? "bg-red-500 text-white" : "bg-red-50 text-red-600 hover:bg-red-100"}`}
@@ -739,27 +758,53 @@ export default function ContractorDashboard() {
                     )}
                   </div>
 
-                  {/* Applicants panel */}
+                  {/* Applicants / Completion Approval panel */}
                   {applicantsJob === job.id && (
                     <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2.5 space-y-2 border border-amber-200 dark:border-amber-700" data-testid={`applicants-panel-${job.id}`}>
-                      {!applicantDetails[job.id]?.length ? (
-                        <p className="text-xs text-slate-400 text-center py-1">Loading applicants…</p>
-                      ) : applicantDetails[job.id].map(c => (
-                        <div key={c.id} className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{c.name}</p>
-                            <p className="text-[10px] text-slate-500">{c.discipline || c.trade || "General"} · ⭐ {c.rating?.toFixed(1) || "New"}</p>
+                      {job.status === "pending_complete" ? (
+                        /* Per-crew completion approval panel (spec §2) */
+                        (applicantDetails[job.id] || []).filter(c => {
+                          const a = (job.crew_assignments || []).find(x => x.crew_id === c.id);
+                          return a?.status === "pending_complete";
+                        }).length === 0 ? (
+                          <p className="text-xs text-slate-400 text-center py-1">All crew approvals processed</p>
+                        ) : (applicantDetails[job.id] || []).filter(c => {
+                          const a = (job.crew_assignments || []).find(x => x.crew_id === c.id);
+                          return a?.status === "pending_complete";
+                        }).map(c => (
+                          <div key={c.id} className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{c.name}</p>
+                              <p className="text-[10px] text-slate-500">{c.discipline || c.trade || "—"} · Awaiting your approval</p>
+                            </div>
+                            <button onClick={() => approveCrewComplete(job.id, c.id, c.name)}
+                              className="flex-shrink-0 px-2 py-1 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded"
+                              data-testid={`approve-btn-${c.id}`}>
+                              Approve
+                            </button>
                           </div>
-                          <div className="flex gap-1 flex-shrink-0">
-                            <button onClick={() => approveApplicant(job.id, c.id)}
-                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
-                              data-testid={`approve-${job.id}-${c.id}`}>Approve</button>
-                            <button onClick={() => declineApplicant(job.id, c.id)}
-                              className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
-                              data-testid={`decline-${job.id}-${c.id}`}>Decline</button>
+                        ))
+                      ) : (
+                        /* Regular applicants panel */
+                        !applicantDetails[job.id]?.length ? (
+                          <p className="text-xs text-slate-400 text-center py-1">Loading applicants…</p>
+                        ) : applicantDetails[job.id].map(c => (
+                          <div key={c.id} className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-800 dark:text-white truncate">{c.name}</p>
+                              <p className="text-[10px] text-slate-500">{c.discipline || c.trade || "General"} · ⭐ {c.rating?.toFixed(1) || "New"}</p>
+                            </div>
+                            <div className="flex gap-1 flex-shrink-0">
+                              <button onClick={() => approveApplicant(job.id, c.id)}
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                                data-testid={`approve-${job.id}-${c.id}`}>Approve</button>
+                              <button onClick={() => declineApplicant(job.id, c.id)}
+                                className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-600 hover:bg-red-200 transition-colors"
+                                data-testid={`decline-${job.id}-${c.id}`}>Decline</button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   )}
 

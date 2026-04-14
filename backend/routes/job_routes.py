@@ -16,6 +16,10 @@ from utils.job_helpers import (
     assert_rating_allowed, assert_rating_status, assert_job_participant,
     assert_stars_valid, RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES,
 )
+from utils.assignment_helpers import (
+    get_assignment, get_or_create_assignment, update_assignment_status,
+    log_status_history, maybe_complete_job, force_close_assignments,
+)
 from typing import Optional
 import logging
 
@@ -177,51 +181,55 @@ async def jobs_itinerary(current_user: dict = Depends(get_current_user)):
     """Return jobs with confirmed crew-contractor agreements for the itinerary view."""
     uid = current_user["id"]
     role = current_user["role"]
-    # Include completed/past jobs so they appear in the Past Jobs pane
     active_statuses = ACTIVE_STATUSES
 
-    # ── Auto-archive stale terminal jobs (lazy eval, Issue 4) ─────────────────
+    # ── Auto-archive stale terminal jobs (lazy eval) ───────────────────────────
     AUTO_ARCHIVE_HOURS = 48
     threshold = (datetime.now(timezone.utc) - timedelta(hours=AUTO_ARCHIVE_HOURS)).isoformat()
-    stale_statuses = STALE_STATUSES
     await db.jobs.update_many(
-        {
-            "status": {"$in": stale_statuses},
-            "is_archived": {"$ne": True},
-            "status_changed_at": {"$exists": True, "$lt": threshold},
-        },
-        [{"$set": {
-            "is_archived": True,
-            "archived_at": datetime.now(timezone.utc).isoformat(),
-            "archived_by": "system",
-            "pre_archive_status": "$status",
-            "status": "archived",
-        }}]
+        {"status": {"$in": STALE_STATUSES}, "is_archived": {"$ne": True},
+         "status_changed_at": {"$exists": True, "$lt": threshold}},
+        [{"$set": {"is_archived": True, "archived_at": datetime.now(timezone.utc).isoformat(),
+                   "archived_by": "system", "pre_archive_status": "$status", "status": "archived"}}]
     )
-    # ──────────────────────────────────────────────────────────────────────────
 
     if role == "crew":
-        # Exclude jobs the crew member independently archived
-        query = {
-            "crew_accepted": uid,
-            "status": {"$in": active_statuses},
-            "is_archived": {"$ne": True},
-            "crew_archived": {"$ne": uid},
-        }
+        query = {"crew_accepted": uid, "status": {"$in": active_statuses},
+                 "is_archived": {"$ne": True}, "crew_archived": {"$ne": uid}}
     elif role == "contractor":
-        query = {
-            "contractor_id": uid,
-            "crew_accepted": {"$exists": True, "$ne": []},
-            "status": {"$in": active_statuses},
-            "is_archived": {"$ne": True},
-        }
+        query = {"contractor_id": uid, "crew_accepted": {"$exists": True, "$ne": []},
+                 "status": {"$in": active_statuses}, "is_archived": {"$ne": True}}
     else:
         query = {"status": {"$in": active_statuses}, "is_archived": {"$ne": True}}
 
     jobs = await db.jobs.find(query, {"_id": 0}).sort("start_time", 1).to_list(200)
 
+    # Fetch all assignments for these jobs in bulk
+    job_ids = [j["id"] for j in jobs]
+    all_assignments = await db.crew_assignments.find(
+        {"job_id": {"$in": job_ids}}, {"_id": 0}
+    ).to_list(2000)
+    assignments_by_job: dict[str, list] = {}
+    for a in all_assignments:
+        assignments_by_job.setdefault(a["job_id"], []).append(a)
+
     enriched = []
     for job in jobs:
+        job_id = job["id"]
+        job_assignments = assignments_by_job.get(job_id, [])
+
+        # Per-crew: attach assignment map for frontend consumption
+        assignment_map = {a["crew_id"]: a for a in job_assignments}
+        job["crew_assignments"] = job_assignments
+
+        # For crew: attach their own assignment status
+        if role == "crew":
+            my_a = assignment_map.get(uid)
+            job["my_assignment_status"] = my_a["status"] if my_a else "assigned"
+            # Per-spec: hide if removed
+            if my_a and my_a["status"] == "removed":
+                continue
+
         contractor = await db.users.find_one(
             {"id": job["contractor_id"]},
             {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1, "company_name": 1}
@@ -231,10 +239,11 @@ async def jobs_itinerary(current_user: dict = Depends(get_current_user)):
         crew_profiles = []
         for crew_id in job.get("crew_accepted", []):
             crew = await db.users.find_one(
-                {"id": crew_id},
-                {"_id": 0, "id": 1, "name": 1, "trade": 1, "phone": 1}
+                {"id": crew_id}, {"_id": 0, "id": 1, "name": 1, "trade": 1, "discipline": 1, "phone": 1}
             )
             if crew:
+                a = assignment_map.get(crew_id)
+                crew["assignment_status"] = a["status"] if a else "assigned"
                 crew_profiles.append(crew)
         job["crew_profiles"] = crew_profiles
         enriched.append(job)
@@ -615,38 +624,167 @@ async def toggle_task(job_id: str, body: TaskCheckRequest, current_user: dict = 
 
 @router.post("/{job_id}/crew-complete")
 async def crew_complete(job_id: str, current_user: dict = Depends(get_current_user)):
-    """Crew member marks the job as complete from their side."""
+    """
+    Crew marks their work done.  Idempotent — safe to call twice.
+    Transitions:  assignment  assigned → pending_complete
+                  job         any-active → pending_complete
+    """
     if current_user["role"] != "crew":
         raise HTTPException(status_code=403, detail="Crew only")
-    job = await db.jobs.find_one({"id": job_id}, {"_id": 0, "crew_accepted": 1, "status": 1})
+
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     if current_user["id"] not in job.get("crew_accepted", []):
         raise HTTPException(status_code=403, detail="You are not assigned to this job")
-    ts = now_str()
-    await db.jobs.update_one(
-        {"id": job_id},
-        {"$set": {f"crew_submitted_at.{current_user['id']}": ts}},
+    if job["status"] in ("completed", "cancelled", "archived"):
+        raise HTTPException(status_code=400, detail=f"Job is already {job['status']}")
+
+    # Idempotent: fetch or create assignment
+    assignment = await get_or_create_assignment(job_id, current_user["id"])
+    if assignment["status"] in ("pending_complete", "approved_complete"):
+        return {"message": "Already submitted", "assignment_status": assignment["status"]}
+
+    now = now_str()
+    await update_assignment_status(
+        assignment, "pending_complete",
+        extra_fields={"pending_complete_at": now},
+        actor_id=current_user["id"], actor_type="crew",
     )
-    return {"message": "Submission recorded", "submitted_at": ts}
+
+    # Force job → pending_complete
+    prev_job_status = job["status"]
+    if prev_job_status not in ("pending_complete",):
+        await db.jobs.update_one(
+            {"id": job_id},
+            {"$set": {"status": "pending_complete", "status_changed_at": now}},
+        )
+        await log_status_history(
+            job_id=job_id, entity_type="job",
+            from_status=prev_job_status, to_status="pending_complete",
+            actor_id=current_user["id"], actor_type="crew",
+        )
+
+    # Notify contractor
+    await create_notification(
+        job["contractor_id"], "crew_submitted_complete", "Crew Submitted Completion",
+        f"{current_user['name']} marked '{job['title']}' complete. Approve to finalize."
+    )
+    try:
+        from routes.ws_routes import manager
+        await manager.send_to_user(job["contractor_id"], {
+            "type": "crew_submitted_complete",
+            "job_id": job_id, "job_title": job["title"],
+            "crew_name": current_user["name"], "crew_id": current_user["id"],
+        })
+    except Exception:
+        pass
+
+    return {"message": "Completion submitted", "assignment_status": "pending_complete"}
 
 
-@router.post("/{job_id}/contractor-complete")
-async def contractor_complete(job_id: str, current_user: dict = Depends(get_current_user)):
-    """Contractor sets the job as fully complete."""
-    if current_user["role"] != "contractor":
+@router.post("/{job_id}/crew/{crew_id}/approve-complete")
+async def approve_crew_complete(
+    job_id: str, crew_id: str, current_user: dict = Depends(get_current_user)
+):
+    """
+    Contractor approves a specific crew member's completion.
+    Transitions: assignment pending_complete → approved_complete
+    Resets 72h timer on ALL remaining pending_complete assignments.
+    If all assignments are terminal → Job → completed.
+    """
+    if current_user["role"] not in ("contractor", "admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Contractor only")
-    job = await db.jobs.find_one({"id": job_id}, {"_id": 0, "contractor_id": 1, "status": 1})
+
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["contractor_id"] != current_user["id"]:
+    if job["contractor_id"] != current_user["id"] and current_user["role"] not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Not your job")
-    ts = now_str()
-    await db.jobs.update_one(
-        {"id": job_id},
-        {"$set": {"status": "completed_pending_review", "contractor_completed_at": ts, "status_changed_at": ts}},
+
+    assignment = await get_assignment(job_id, crew_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment["status"] == "approved_complete":
+        return {"message": "Already approved", "job_completed": False}
+
+    now = now_str()
+    await update_assignment_status(
+        assignment, "approved_complete",
+        extra_fields={"approved_at": now},
+        actor_id=current_user["id"], actor_type="contractor",
     )
-    return {"message": "Job marked complete", "completed_at": ts}
+
+    # Reset 72h timer for all remaining pending_complete assignments
+    await db.crew_assignments.update_many(
+        {"job_id": job_id, "status": "pending_complete"},
+        {"$set": {"last_contractor_action_at": now, "updated_at": now}},
+    )
+
+    # Award partial points to the approved crew member now
+    await db.users.update_one({"id": crew_id}, {"$inc": {"points": 10}})
+
+    crew_user = await db.users.find_one({"id": crew_id}, {"_id": 0, "name": 1})
+    await create_notification(
+        crew_id, "completion_approved", "Completion Approved",
+        f"'{job['title']}' completion approved by contractor."
+    )
+
+    # Check if all done → complete job
+    job_completed = await maybe_complete_job(job_id, actor_id=current_user["id"])
+
+    try:
+        from routes.ws_routes import manager
+        await manager.send_to_user(crew_id, {
+            "type": "completion_approved", "job_id": job_id,
+            "job_title": job["title"], "job_completed": job_completed,
+        })
+    except Exception:
+        pass
+
+    return {"message": "Crew completion approved", "job_completed": job_completed}
+
+
+@router.post("/{job_id}/crew/{crew_id}/remove")
+async def remove_crew_from_job(
+    job_id: str, crew_id: str, current_user: dict = Depends(get_current_user)
+):
+    """
+    Contractor removes a crew member from an active or pending-complete job.
+    Assignment → removed. Does not add to Past Jobs. May trigger job completion.
+    """
+    if current_user["role"] not in ("contractor", "admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Contractor only")
+
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["contractor_id"] != current_user["id"] and current_user["role"] not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Not your job")
+
+    assignment = await get_assignment(job_id, crew_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    if assignment["status"] not in ("assigned", "pending_complete"):
+        raise HTTPException(status_code=400, detail=f"Cannot remove crew with status '{assignment['status']}'")
+
+    await update_assignment_status(
+        assignment, "removed",
+        actor_id=current_user["id"], actor_type="contractor",
+    )
+
+    new_accepted = [c for c in job.get("crew_accepted", []) if c != crew_id]
+    await db.jobs.update_one({"id": job_id}, {"$set": {"crew_accepted": new_accepted}})
+
+    await create_notification(
+        crew_id, "removed_from_job", "Removed from Job",
+        f"You have been removed from '{job['title']}'."
+    )
+
+    # Check if removal triggers completion
+    await maybe_complete_job(job_id, actor_id=current_user["id"])
+
+    return {"message": "Crew member removed"}
 
 
 @router.post("/{job_id}/dispute")
@@ -719,6 +857,14 @@ async def cancel_job(job_id: str, archive: bool = False, current_user: dict = De
 
     await db.jobs.update_one({"id": job_id}, {"$set": updates})
 
+    # Force-close all open assignments → approved_complete (enables ratings, spec §5)
+    await force_close_assignments(job_id, actor_id=current_user["id"], actor_type="contractor")
+    await log_status_history(
+        job_id=job_id, entity_type="job",
+        from_status=job["status"], to_status="cancelled",
+        actor_id=current_user["id"], actor_type="contractor",
+    )
+
     for crew_id in job.get("crew_accepted", []):
         await create_notification(
             crew_id, "job_cancelled", "Job Cancelled",
@@ -740,10 +886,16 @@ async def suspend_job(job_id: str, current_user: dict = Depends(get_current_user
         raise HTTPException(status_code=404, detail="Job not found")
     if job["contractor_id"] != current_user["id"] and current_user["role"] not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Not authorized")
-    if job["status"] not in ("open", "fulfilled"):
-        raise HTTPException(status_code=400, detail="Can only suspend open or fulfilled jobs")
+    if job["status"] not in ("open", "fulfilled", "in_progress", "pending_complete"):
+        raise HTTPException(status_code=400, detail="Cannot suspend job in this state")
 
     await db.jobs.update_one({"id": job_id}, {"$set": {"status": "suspended", "status_changed_at": now_str()}})
+    await force_close_assignments(job_id, actor_id=current_user["id"], actor_type="contractor")
+    await log_status_history(
+        job_id=job_id, entity_type="job",
+        from_status=job["status"], to_status="suspended",
+        actor_id=current_user["id"], actor_type="contractor",
+    )
 
     for crew_id in job.get("crew_accepted", []):
         await create_notification(
@@ -954,6 +1106,9 @@ async def approve_applicant(job_id: str, crew_id: str, current_user: dict = Depe
         "crew_pending": new_pending, "crew_accepted": new_accepted, "status": new_status
     }})
 
+    # Create CrewAssignment for the newly accepted crew member
+    await get_or_create_assignment(job_id, crew_id)
+
     crew = await db.users.find_one({"id": crew_id}, {"_id": 0})
     crew_name = crew["name"] if crew else "Crew member"
     await create_notification(crew_id, "application_approved", "Application Approved",
@@ -1142,8 +1297,9 @@ async def accept_offer(offer_id: str, current_user: dict = Depends(get_current_u
             "$set": {"updated_at": now_str()}
         }
     )
-    
-    # Update offer status
+
+    # Create CrewAssignment for accepted crew
+    await get_or_create_assignment(offer["job_id"], current_user["id"])
     await db.offers.update_one(
         {"id": offer_id},
         {"$set": {"status": "accepted", "updated_at": now_str()}}
@@ -1402,31 +1558,21 @@ async def complete_job(job_id: str, current_user: dict = Depends(get_current_use
 
 @router.post("/{job_id}/verify")
 async def verify_job(job_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Backward-compat: approve ALL pending crew at once.
+    Prefer per-crew POST /{job_id}/crew/{crew_id}/approve-complete.
+    """
     job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["contractor_id"] != current_user["id"]:
+    if job["contractor_id"] != current_user["id"] and current_user["role"] not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Only the contractor can verify")
-    if job["status"] != "completed_pending_review":
+    if job["status"] not in ("pending_complete", "completed_pending_review"):
         raise HTTPException(status_code=400, detail="Job not pending review")
 
-    now = now_str()
-    await db.jobs.update_one(
-        {"id": job_id},
-        {"$set": {"status": "completed", "completed_at": now, "status_changed_at": now}}
-    )
-
-    # Award points to crew members
-    for crew_id in job.get("crew_accepted", []):
-        await db.users.update_one(
-            {"id": crew_id},
-            {"$inc": {"points": 50, "jobs_completed": 1}}
-        )
-        # Notify each crew member that the job is verified complete
-        await create_notification(
-            crew_id, "job_verified", "Job Verified",
-            f"'{job['title']}' has been verified complete by the contractor. +50 pts!"
-        )
+    # Force-close all remaining assignments then complete
+    await force_close_assignments(job_id, actor_id=current_user["id"], actor_type="contractor")
+    await maybe_complete_job(job_id, actor_id=current_user["id"])
 
     return {"message": "Job verified and completed"}
 

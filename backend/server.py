@@ -383,6 +383,98 @@ _SEED_TRADES = [
 ]
 
 
+async def migrate_crew_assignments():
+    """
+    Idempotent migration: create CrewAssignment for every crew member
+    already accepted into a job. Maps existing crew_submitted_at → pending_complete.
+    """
+    from utils.assignment_helpers import log_status_history as _log
+    now = datetime.now(timezone.utc).isoformat()
+    jobs = await db.jobs.find(
+        {"crew_accepted": {"$exists": True, "$ne": []}}, {"_id": 0}
+    ).to_list(5000)
+    created = 0
+    for job in jobs:
+        job_id = job["id"]
+        submitted = job.get("crew_submitted_at", {}) or {}
+        for crew_id in job.get("crew_accepted", []):
+            existing = await db.crew_assignments.find_one({"job_id": job_id, "crew_id": crew_id})
+            if existing:
+                continue
+            # Determine status from legacy data
+            if job["status"] in ("completed", "cancelled", "suspended", "archived", "past"):
+                status = "approved_complete"
+            elif crew_id in submitted:
+                status = "pending_complete"
+            else:
+                status = "assigned"
+            doc = {
+                "id": str(uuid.uuid4()),
+                "job_id": job_id,
+                "crew_id": crew_id,
+                "status": status,
+                "pending_complete_at": submitted.get(crew_id) if status == "pending_complete" else None,
+                "last_contractor_action_at": None,
+                "approved_at": now if status == "approved_complete" else None,
+                "created_at": job.get("created_at", now),
+                "updated_at": now,
+            }
+            try:
+                await db.crew_assignments.insert_one(doc)
+                created += 1
+            except Exception:
+                pass
+    if created:
+        logger.info(f"Migration: created {created} CrewAssignments from legacy data")
+
+    # Migrate jobs in completed_pending_review → pending_complete
+    r = await db.jobs.update_many(
+        {"status": "completed_pending_review"},
+        {"$set": {"status": "pending_complete"}}
+    )
+    if r.modified_count:
+        logger.info(f"Migration: {r.modified_count} jobs completed_pending_review → pending_complete")
+
+
+async def auto_approve_pending_crew():
+    """
+    72-hour rule: auto-approve crew whose completion has been pending > 72h
+    with no contractor action. Spec §3.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+    from utils.assignment_helpers import log_status_history as _log, maybe_complete_job as _complete
+
+    to_approve = await db.crew_assignments.find(
+        {"status": "pending_complete", "$or": [
+            {"last_contractor_action_at": None,   "pending_complete_at": {"$lt": cutoff}},
+            {"last_contractor_action_at": {"$lt": cutoff}},
+        ]},
+        {"_id": 0}
+    ).to_list(500)
+
+    if not to_approve:
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    affected_jobs: set[str] = set()
+    for a in to_approve:
+        await db.crew_assignments.update_one(
+            {"id": a["id"]},
+            {"$set": {"status": "approved_complete", "approved_at": now, "updated_at": now}},
+        )
+        await _log(
+            job_id=a["job_id"], entity_type="crew_assignment",
+            from_status="pending_complete", to_status="approved_complete",
+            actor_id="system", actor_type="system",
+            crew_assignment_id=a["id"],
+        )
+        affected_jobs.add(a["job_id"])
+        logger.info(f"[AutoApprove] assignment={a['id']} crew={a['crew_id']} job={a['job_id']}")
+
+    for job_id in affected_jobs:
+        await _complete(job_id, actor_id="system")
+
+
 async def seed_trades():
     """Idempotent seed: insert disciplines/trades/skills. Migrates existing trades to add skills."""
     from discipline_data import DISCIPLINE_TREE
@@ -433,6 +525,16 @@ async def startup_event():
         await db.activity_logs.create_index("category")
         await db.activity_logs.create_index("actor_id")
         await db.activity_logs.create_index("target_id")
+        # CrewAssignment indices (unique constraint + fast lookup)
+        await db.crew_assignments.create_index(
+            [("job_id", 1), ("crew_id", 1)], unique=True
+        )
+        await db.crew_assignments.create_index([("job_id", 1), ("status", 1)])
+        await db.crew_assignments.create_index("status")
+        await db.crew_assignments.create_index("pending_complete_at")
+        # StatusHistory indices (append-only audit log)
+        await db.status_history.create_index([("job_id", 1), ("timestamp", -1)])
+        await db.status_history.create_index("entity_type")
         logger.info("Database indexes created")
     except Exception as e:
         logger.warning(f"Index creation: {e}")
@@ -466,6 +568,8 @@ async def startup_event():
 
     # Seed accounts
     await seed_accounts()
+    # Migrate legacy data → CrewAssignment collection
+    await migrate_crew_assignments()
 
     # Init default settings (including site_name/tagline + lighter blue defaults)
     existing_settings = await db.settings.find_one({})
@@ -521,6 +625,7 @@ async def startup_event():
     scheduler.add_job(expire_emergency_jobs, "interval", minutes=15, id="emergency_expiry_cron", replace_existing=True)
     scheduler.add_job(auto_start_jobs, "interval", minutes=5, id="auto_start_jobs_cron", replace_existing=True)
     scheduler.add_job(auto_status_jobs, "interval", hours=1, id="auto_status_jobs_cron", replace_existing=True)
+    scheduler.add_job(auto_approve_pending_crew, "interval", hours=2, id="auto_approve_crew_cron", replace_existing=True)
     scheduler.start()
 
     await seed_trades()

@@ -300,14 +300,26 @@ export default function JobsItinerary() {
       )
     : jobs;
 
-  const PAST_STATUSES = ["completed", "past", "completed_pending_review"];
+  const PAST_STATUSES = ["completed", "past", "cancelled", "suspended"];
 
   const upcoming = filtered
-    .filter(j => !PAST_STATUSES.includes(j.status))
+    .filter(j => {
+      if (PAST_STATUSES.includes(j.status)) return false;
+      // For crew: a job moves to past when their own assignment is approved_complete
+      if (isCrew && j.my_assignment_status === "approved_complete") return false;
+      return true;
+    })
     .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
   const past = filtered
-    .filter(j => PAST_STATUSES.includes(j.status))
+    .filter(j => {
+      if (isCrew) {
+        // Spec §Past Jobs: show if assignment ≠ removed AND (approved_complete OR terminal job)
+        if (j.my_assignment_status === "removed") return false;
+        return j.my_assignment_status === "approved_complete" || PAST_STATUSES.includes(j.status);
+      }
+      return PAST_STATUSES.includes(j.status);
+    })
     .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
   const selectedJob = jobs.find(j => j.id === selectedJobId) || null;
@@ -407,27 +419,39 @@ export default function JobsItinerary() {
     } catch { toast.error("Failed to update task"); }
   };
 
+  const [crewCompleteLoading, setCrewCompleteLoading] = useState(false);
+
   const handleCrewComplete = async () => {
-    if (!selectedJob) return;
+    if (!selectedJob || crewCompleteLoading) return;
+    const myStatus = selectedJob.my_assignment_status;
+    if (myStatus === "pending_complete" || myStatus === "approved_complete") {
+      toast("Completion already submitted");
+      return;
+    }
+    setCrewCompleteLoading(true);
     try {
       await axios.post(`${API}/jobs/${selectedJob.id}/crew-complete`);
-      toast.success("Job completion submitted!");
+      toast.success("Completion submitted! Awaiting contractor approval.");
       fetchItinerary();
-      // Only prompt to rate if crew hasn't already handled this contractor's rating
-      const alreadyHandled = selectedJob.rated_by_crew?.includes(user?.id);
-      if (selectedJob.contractor_id && !alreadyHandled) {
-        setRatingData({ jobId: selectedJob.id, ratedId: selectedJob.contractor_id, ratedName: selectedJob.contractor_name || "Contractor" });
-      }
+      // Rating prompt deferred — only shown when job reaches completed/cancelled/suspended
     } catch (e) { toast.error(getErr(e, "Failed to submit")); }
+    finally { setCrewCompleteLoading(false); }
   };
 
-  const handleContractorComplete = async () => {
+  const handleApproveCrew = async (crewId) => {
     if (!selectedJob) return;
     try {
-      await axios.post(`${API}/jobs/${selectedJob.id}/contractor-complete`);
-      toast.success("Job marked complete!");
+      const { data } = await axios.post(`${API}/jobs/${selectedJob.id}/crew/${crewId}/approve-complete`);
+      toast.success(data.job_completed ? "All crew approved — Job completed!" : "Crew completion approved");
       fetchItinerary();
-    } catch (e) { toast.error(getErr(e, "Failed to complete")); }
+      // Prompt rating when job completes via all-crew approval
+      if (data.job_completed && isCrew) {
+        const alreadyHandled = selectedJob.rated_by_crew?.includes(user?.id);
+        if (!alreadyHandled && selectedJob.contractor_id) {
+          setRatingData({ jobId: selectedJob.id, ratedId: selectedJob.contractor_id, ratedName: selectedJob.contractor_name || "Contractor" });
+        }
+      }
+    } catch (e) { toast.error(getErr(e, "Failed to approve")); }
   };
 
   const submitDispute = async () => {
@@ -718,28 +742,39 @@ export default function JobsItinerary() {
                 Add to Calendar
               </button>
 
-              {/* Submit Complete — Crew */}
-              {isCrew && selectedJob && (
+              {/* Submit Complete — Crew (idempotent: disable once submitted) */}
+              {isCrew && selectedJob && !PAST_STATUSES.includes(selectedJob.status) && (
                 <button
                   onClick={handleCrewComplete}
-                  disabled={!!actionLoading}
+                  disabled={crewCompleteLoading || selectedJob.my_assignment_status === "pending_complete" || selectedJob.my_assignment_status === "approved_complete"}
                   data-testid="footer-crew-complete-btn"
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50"
                 >
-                  <CheckCircle className="w-3.5 h-3.5" /> Submit Complete
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {selectedJob.my_assignment_status === "pending_complete" ? "Awaiting Approval" :
+                   selectedJob.my_assignment_status === "approved_complete" ? "Approved" : "Submit Complete"}
                 </button>
               )}
 
-              {/* Set Complete — Contractor */}
-              {isContractor && selectedJob && (
-                <button
-                  onClick={handleContractorComplete}
-                  disabled={!!actionLoading}
-                  data-testid="footer-contractor-complete-btn"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors disabled:opacity-50"
-                >
-                  <CheckCircle className="w-3.5 h-3.5" /> Set Complete
-                </button>
+              {/* Per-crew Approve buttons — Contractor (spec §2) */}
+              {isContractor && selectedJob && selectedJob.status === "pending_complete" && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(selectedJob.crew_assignments || [])
+                    .filter(a => a.status === "pending_complete")
+                    .map(a => {
+                      const cp = (selectedJob.crew_profiles || []).find(c => c.id === a.crew_id);
+                      return (
+                        <button key={a.crew_id}
+                          onClick={() => handleApproveCrew(a.crew_id)}
+                          data-testid={`approve-crew-btn-${a.crew_id}`}
+                          className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Approve {cp?.name || a.crew_id.slice(0, 6)}
+                        </button>
+                      );
+                    })}
+                </div>
               )}
 
               {/* Copy+Repost — Contractor on past/completed jobs (Issue 5) */}
