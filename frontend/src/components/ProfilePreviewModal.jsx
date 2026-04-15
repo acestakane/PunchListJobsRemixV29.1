@@ -190,7 +190,7 @@ export function ProfilePreviewModal({ userId, onClose }) {
                 Portfolio ({profile.portfolio_images.length})
               </h4>
               <div className="grid grid-cols-3 gap-3">
-                {profile.portfolio_images.slice(0, 6).map((img) => (
+                {profile.portfolio_images.slice(0, 6).map((img, idx) => (
                   <div key={img} className="aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
                     <img 
                       src={getImageUrl(img)} 
