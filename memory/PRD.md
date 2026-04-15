@@ -140,3 +140,12 @@ TWILIO_ACCOUNT_SID=<from twilio.com/console>
 TWILIO_AUTH_TOKEN=<from twilio.com/console>
 TWILIO_PHONE_NUMBER=<purchased Twilio number>
 ```
+
+### 2026-04-15 — Code Quality Review Fixes (Full Sweep)
+- **Empty catch blocks (13)**: Added console.error/console.warn in MapHelpers.jsx, ContractorDashboard.jsx, CrewDashboard.jsx, AppSettingsPage.jsx, Help.jsx
+- **Array index keys (11)**: Fixed stable keys across Help.jsx, CmsPage.jsx, ProfilePreviewModal.jsx, ItineraryCard.jsx, DashboardCards.jsx, OnboardingStep2.jsx  
+- **notify.py**: Clarified _push_utils initialization
+- **ProfilePage.jsx (902→741 lines)**: Extracted ProfileAvatarCard, ProfileRatingsSection, ProfilePortfolioSection, ProfileBoostCard
+- **ContractorDashboard.jsx (857→726 lines)**: submitRatings extracted to useRatingSubmit hook
+- **job_helpers.py**: Added build_list_jobs_query, annotate_jobs_with_distance, build_itinerary_query - reduces list_jobs cyclomatic complexity from 20→8
+- **job_routes.py**: Uses new helpers, removed direct haversine_distance import
