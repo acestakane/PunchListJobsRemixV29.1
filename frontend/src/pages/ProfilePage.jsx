@@ -65,6 +65,24 @@ export default function ProfilePage() {
   const addrDebounceRef = useRef(null);
   const addrSuggestionsRef = useRef(null);
 
+  const fetchRatings = useCallback(async () => {
+    try {
+      const myJobs = await axios.get(`${API}/jobs/my-jobs`);
+      const completedJobs = (myJobs.data || []).filter(j => j.status === "completed");
+      if (completedJobs.length > 0) {
+        const ratingRes = await axios.get(`${API}/jobs/${completedJobs[0].id}/ratings`);
+        setRatings(ratingRes.data.filter(r => r.rated_id === user?.id) || []);
+      }
+    } catch (e) { console.error("fetchRatings failed", e); }
+  }, [user?.id]);
+
+  const fetchReferralInfo = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/users/referral/info`);
+      setReferralInfo(res.data);
+    } catch (e) { console.error("fetchReferralInfo failed", e); }
+  }, []);
+
   useEffect(() => {
     // Viewing another user's public profile
     if (userId && userId !== user?.id) {
@@ -100,7 +118,7 @@ export default function ProfilePage() {
       // Fetch public settings for feature flags
       axios.get(`${API}/settings/public`).then(r => setPubSettings(r.data)).catch(() => {});
     }
-  }, [user, userId]);
+  }, [user, userId, fetchReferralInfo, fetchRatings]);
 
   // Close address suggestions when clicking outside
   useEffect(() => {
@@ -138,24 +156,6 @@ export default function ProfilePage() {
     setForm(f => ({ ...f, address: s.full_address }));
     setAddrSuggestions([]);
     setShowAddrSuggestions(false);
-  };
-
-  const fetchRatings = async () => {
-    try {
-      const myJobs = await axios.get(`${API}/jobs/my-jobs`);
-      const completedJobs = (myJobs.data || []).filter(j => j.status === "completed");
-      if (completedJobs.length > 0) {
-        const ratingRes = await axios.get(`${API}/jobs/${completedJobs[0].id}/ratings`);
-        setRatings(ratingRes.data.filter(r => r.rated_id === user?.id) || []);
-      }
-    } catch (e) { console.error("fetchRatings failed", e); }
-  };
-
-  const fetchReferralInfo = async () => {
-    try {
-      const res = await axios.get(`${API}/users/referral/info`);
-      setReferralInfo(res.data);
-    } catch (e) { console.error("fetchReferralInfo failed", e); }
   };
 
   const saveProfile = async () => {

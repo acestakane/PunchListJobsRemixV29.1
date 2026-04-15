@@ -36,6 +36,7 @@ from routes.concern_routes import router as concern_router
 from routes.trades_routes import router as trades_router
 from routes.message_routes import router as message_router
 from routes.offers_routes import router as offers_router
+from routes.rating_routes import router as rating_router
 
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(job_router, prefix="/jobs", tags=["jobs"])
@@ -52,6 +53,7 @@ api_router.include_router(concern_router, prefix="/concerns", tags=["concerns"])
 api_router.include_router(trades_router, prefix="/trades", tags=["trades"])
 api_router.include_router(message_router, prefix="/messages", tags=["messages"])
 api_router.include_router(offers_router, prefix="/offers", tags=["offers"])
+api_router.include_router(rating_router, prefix="/jobs", tags=["ratings"])
 
 from fastapi import APIRouter as _AR
 from database import db as _db

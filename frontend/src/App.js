@@ -34,7 +34,7 @@ function OnboardingGate({ children }) {
 
   useEffect(() => {
     if (!user || user.role === "admin" || user.role === "superadmin") return;
-    const done = localStorage.getItem(ONBOARDING_KEY);
+    const done = sessionStorage.getItem(ONBOARDING_KEY);
     if (done) return;
     const hasPhoto = !!(user.profile_photo || user.logo);
     const hasPhone = !!user.phone;
@@ -49,7 +49,7 @@ function OnboardingGate({ children }) {
     <>
       {children}
       {showOnboarding && (
-        <OnboardingModal onClose={() => { setShowOnboarding(false); localStorage.setItem(ONBOARDING_KEY, "true"); }} />
+        <OnboardingModal onClose={() => { setShowOnboarding(false); sessionStorage.setItem(ONBOARDING_KEY, "true"); }} />
       )}
     </>
   );

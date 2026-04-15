@@ -27,7 +27,7 @@ export default function OnboardingModal({ onClose }) {
   const suggestionsRef = useRef(null);
 
   const markDone = () => {
-    localStorage.setItem(STORAGE_KEY, "true");
+    sessionStorage.setItem(STORAGE_KEY, "true");
     onClose();
   };
 

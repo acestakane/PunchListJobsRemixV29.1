@@ -61,10 +61,8 @@ export default function SharedJobPage() {
     if (user.role !== "crew") return;
     setApplying(true);
     try {
-      const token = localStorage.getItem("token");
-      await axios.post(`${API}/jobs/${jobId}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // axios default Authorization header is already set by AuthContext
+      await axios.post(`${API}/jobs/${jobId}/accept`, {});
       navigate("/crew/dashboard");
     } catch (e) {
       // On error still send to dashboard where they can see the job
