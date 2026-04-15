@@ -7,7 +7,7 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - **Frontend**: React 19 + Tailwind + craco (port 3000)
 - **Backend**: FastAPI + Motor/MongoDB (port 8001, prefix `/api`)
 - **Database**: MongoDB (punchlistjobs)
-- **Auth**: JWT (HS256, 24h expiry)
+- **Auth**: JWT (HS256, 24h expiry), token stored in `sessionStorage` as `punchlist_token`
 - **Payments**: Square SDK (mocked — empty token → demo mode)
 - **AI**: Emergent LLM key (OpenAI GPT-4o for job matching & fraud detection)
 
@@ -61,6 +61,58 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
   - Created `/backend/utils/analytics_helpers.py` with fetch_user_stats(), fetch_job_stats(), fetch_subscription_stats(), fetch_revenue_data(), fetch_performance_data(), fetch_recent_users()
   - `admin_routes.py` get_analytics() now delegates to helpers (75→12 lines)
 
+### 2026-04-15 — Code Quality & Security Refactoring Sprint
+- **P0 Security Fix**: Removed `localStorage.getItem("token")` from `SharedJobPage.jsx` — now relies on axios default Authorization header set by AuthContext (token is in sessionStorage, not localStorage)
+- **P1 Hook Deps Fix**: `ProfilePage.jsx` — `fetchRatings` and `fetchReferralInfo` moved before useEffect, wrapped in `useCallback` with proper deps `[user?.id]` and `[]`. Now included in useEffect deps array `[user, userId, fetchReferralInfo, fetchRatings]`.
+- **P1 sessionStorage Migration**: `App.js` and `OnboardingModal.jsx` now use `sessionStorage` for the onboarding completion flag (was localStorage). `AppSettingsPage.jsx` intentionally keeps localStorage for persistent UI preferences (dark mode, notification settings).
+- **P1 Frontend Refactor** — `AuthPage.jsx` (499→160 lines) split into:
+  - `/components/auth/ForgotPasswordPanel.jsx`
+  - `/components/auth/ResetPasswordPanel.jsx`
+  - `/components/auth/LoginRegisterPanel.jsx`
+  - `AuthPage.jsx` is now a thin orchestrator with handler functions + left hero panel
+- **P1 Backend Refactor** — `job_routes.py` (1800→1376 lines) cleaned:
+  - Created `/backend/routes/rating_routes.py` with `rate_user`, `skip_rating`, `remove_rating`, `get_job_ratings` (4 endpoints)
+  - Removed duplicate offer management routes (`/offers/{id}/accept`, `/offers/{id}/counter`, `/offers/{id}/decline`, `/offers/{id}/withdraw`) that were duplicated from `offers_routes.py`
+  - `server.py` registers `rating_router` at prefix `/api/jobs`
+- **Minor Fix**: Fixed React hydration warning in `TradeSelect.jsx` — `{"\u00A0\u00A0"}{t.name}` → `{"\u00A0\u00A0${t.name}"}` (single text node inside option)
+- **Testing**: 100% pass rate (14 backend tests, all frontend flows including auth, dashboard, profile, itinerary)
+
+## File Structure (Current)
+```
+/app/
+├── backend/
+│   ├── routes/
+│   │   ├── job_routes.py       (~1376 lines, main job CRUD)
+│   │   ├── rating_routes.py    (NEW: 4 rating endpoints)
+│   │   ├── offers_routes.py    (standalone offer management)
+│   │   ├── admin_routes.py     (admin + analytics)
+│   │   ├── auth_routes.py      (login, register, reset)
+│   │   └── ...others
+│   ├── utils/
+│   │   ├── analytics_helpers.py
+│   │   ├── auth_helpers.py
+│   │   ├── job_helpers.py
+│   │   └── assignment_helpers.py
+│   ├── models.py
+│   ├── server.py
+│   ├── auth.py
+│   └── database.py
+├── frontend/
+│   ├── src/
+│   │   ├── pages/ (AuthPage.jsx thin, ProfilePage.jsx fixed hooks, etc.)
+│   │   ├── components/
+│   │   │   ├── auth/ (ForgotPasswordPanel, ResetPasswordPanel, LoginRegisterPanel)
+│   │   │   ├── itinerary/ (ItineraryCard, EmptyPane, etc.)
+│   │   │   ├── contractor/ (ApplicantsPanel, CancelRequestsPanel)
+│   │   │   ├── onboarding/ (Step1/2/3)
+│   │   │   ├── map/ (mapConstants, MapHelpers)
+│   │   │   ├── crew/ (CrewDashboardHeader, SubscriptionBanners, JobFiltersRow)
+│   │   │   └── profile/ (SocialShareButtons)
+│   │   ├── contexts/ (AuthContext → sessionStorage token)
+│   │   └── App.js
+├── memory/ (PRD.md, test_credentials.md)
+```
+
 ## Prioritized Backlog
 
 ### P0 — Blocking
@@ -70,12 +122,7 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - None outstanding (all P1s complete)
 
 ### P2 — Medium Priority
-- Add `status_history` tab to Admin Job detail view (uses the new /assignments endpoint data)
-- Square live keys when ready
-- Email: configure SMTP credentials (currently mocked)
-
-### P2 — Medium Priority
-- Add `status_history` tab to Admin Job detail view
+- Add `status_history` tab to Admin Job detail view (uses `/api/jobs/{id}/assignments` data)
 - Square live keys when ready
 - Email: configure SMTP credentials (currently mocked)
 

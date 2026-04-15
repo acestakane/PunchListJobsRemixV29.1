@@ -55,7 +55,7 @@ export default function TradeSelect({
               — {cat.name} (all) —
             </option>
             {(cat.trades || []).map(t => (
-              <option key={t.id} value={t.name}>{"\u00A0\u00A0"}{t.name}</option>
+              <option key={t.id} value={t.name}>{`\u00A0\u00A0${t.name}`}</option>
             ))}
           </React.Fragment>
         ))}
