@@ -169,6 +169,18 @@ backend:
           comment: "Notification system working correctly. Error logging improvements verified through job accept flow testing."
 
 frontend:
+  - task: "Modal overlay blocking UI interactions"
+    implemented: true
+    working: false
+    file: "frontend/src/components/OnboardingModal.jsx, frontend/src/components/ProfileCompletionPopup.jsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: false
+          agent: "testing"
+          comment: "CRITICAL ISSUE: Multiple modals are blocking UI interactions on fresh login. After contractor login, OnboardingModal appears (can be closed with data-testid='skip-onboarding'), but then ProfileCompletionPopup immediately appears (data-testid='profile-completion-popup') blocking the 'Post Job' button. The ProfileCompletionPopup can be dismissed with data-testid='popup-dismiss-btn' (Maybe Later button). This creates poor UX as users must dismiss 2 modals before accessing core functionality. Recommendation: (1) Show only ONE modal on first login, OR (2) Add a 'Don't show again' option, OR (3) Make modals non-blocking (allow interaction with background). Current behavior prevents testing of job creation flow."
+
   - task: "AppSettingsPage secure storage"
     implemented: true
     working: true
@@ -244,12 +256,12 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 5
-  run_ui: false
+  test_sequence: 6
+  run_ui: true
 
 test_plan:
   current_focus:
-    - "PunchListJobs rating flow fix verification"
+    - "Modal overlay blocking UI interactions"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -261,3 +273,5 @@ agent_communication:
       message: "Runtime safety fixes testing completed successfully. All 7 test scenarios passed: (1) Backend health check, (2) Authentication flows for all 4 roles, (3) Profile update with None guard verification, (4) Complete job workflow, (5) Job completion and rating flow with runtime safety, (6) Jobs itinerary for both roles, (7) Archive endpoint. The None guards added to rating_routes.py (submit_rating and skip_rating functions) and user_routes.py (update_profile function) are working correctly and preventing potential runtime errors. All backend APIs tested are functioning properly."
     - agent: "testing"
       message: "PunchListJobs rating flow fix testing completed successfully. Comprehensive test of the critical bug fix where crew members couldn't rate contractors after job completion. All 16 test scenarios passed: (1) Contractor authentication, (2) Crew authentication, (3) Job creation, (4) Crew job acceptance, (5) Contractor approves crew, (6) Job start, (7) Crew completion submission, (8) Contractor approves completion, (9) Job status verification (completed), (10) Contractor rates crew, (11) Job auto-move to 'past' status, (12) CRITICAL: Crew rates contractor on 'past' status job, (13) Crew skip rating validation, (14) Contractor jobs itinerary, (15) Crew jobs itinerary, (16) Rating blocked on 'open' status. The fix in job_helpers.py RATING_VALID_STATUSES now correctly includes 'past' and 'completed_pending_review' statuses, allowing crew members to rate contractors even after the job auto-moves to 'past' status. The complete job lifecycle with rating flow is working perfectly."
+    - agent: "testing"
+      message: "UI Testing on fresh database: Attempted to test full job + rating flow (contractor creates job → crew accepts → contractor approves → job start). CRITICAL BLOCKER FOUND: Multiple modal overlays prevent UI interaction. After login, users face: (1) OnboardingModal (3-step wizard: Upload Photo, Add Address, Map Visibility) - can be closed with X button (data-testid='skip-onboarding'), (2) ProfileCompletionPopup immediately appears after closing onboarding - blocks 'Post Job' button - can be dismissed with 'Maybe Later' (data-testid='popup-dismiss-btn'). This double-modal UX blocks core functionality testing. Authentication working correctly for both contractor and crew roles. Recommendation: Consolidate modals or make them non-blocking to allow users to access core features immediately."
