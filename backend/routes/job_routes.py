@@ -27,6 +27,15 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+async def _ws_send(user_id: str, payload: dict) -> None:
+    """Send a WebSocket message to a user, silently logging failures."""
+    try:
+        from routes.ws_routes import manager
+        await manager.send_to_user(user_id, payload)
+    except Exception as e:
+        logger.debug("WS send to %s failed: %s", user_id, e)
+
+
 def now_str():
     return datetime.now(timezone.utc).isoformat()
 
@@ -86,7 +95,6 @@ async def create_job(data: JobCreate, current_user: dict = Depends(get_current_u
 
 
 @router.get("/")
-@router.get("")
 async def list_jobs(
     status: Optional[str] = None,
     trade: Optional[str] = None,
@@ -174,12 +182,7 @@ async def jobs_itinerary(current_user: dict = Depends(get_current_user)):
                    "archived_by": "system", "pre_archive_status": "$status", "status": "archived"}}]
     )
 
-    if role == "crew":
-        query = build_itinerary_query(role, uid, active_statuses)
-    elif role == "contractor":
-        query = build_itinerary_query(role, uid, active_statuses)
-    else:
-        query = build_itinerary_query(role, uid, active_statuses)
+    query = build_itinerary_query(role, uid, active_statuses)
 
     jobs = await db.jobs.find(query, {"_id": 0}).sort("start_time", 1).to_list(200)
 
@@ -248,14 +251,10 @@ async def cancel_notify(job_id: str, current_user: dict = Depends(get_current_us
         job["contractor_id"], "crew_cancel_notify", "Cancel Request",
         f"{current_user['name']} requested to cancel from '{job['title']}'. Accept or Deny."
     )
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(job["contractor_id"], {
-            "type": "crew_cancel_request", "job_id": job_id, "job_title": job["title"],
-            "crew_id": current_user["id"], "crew_name": current_user["name"]
-        })
-    except Exception:
-        pass
+    await _ws_send(job["contractor_id"], {
+        "type": "crew_cancel_request", "job_id": job_id, "job_title": job["title"],
+        "crew_id": current_user["id"], "crew_name": current_user["name"]
+    })
     return {"message": "Cancel request sent to contractor"}
 
 
@@ -275,11 +274,7 @@ async def accept_cancel_request(job_id: str, crew_id: str, current_user: dict = 
     }})
     await create_notification(crew_id, "cancel_accepted", "Cancel Approved",
         f"Your cancel request for '{job['title']}' was approved. Job re-listed.")
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(crew_id, {"type": "cancel_accepted", "job_title": job["title"]})
-    except Exception:
-        pass
+    await _ws_send(crew_id, {"type": "cancel_accepted", "job_title": job["title"]})
     return {"message": "Cancel accepted, job re-listed"}
 
 
@@ -296,11 +291,7 @@ async def deny_cancel_request(job_id: str, crew_id: str, current_user: dict = De
     await db.jobs.update_one({"id": job_id}, {"$set": {"cancel_requests": new_requests}})
     await create_notification(crew_id, "cancel_denied", "Cancel Request Denied",
         f"Your cancel request for '{job['title']}' was denied. You remain assigned.")
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(crew_id, {"type": "cancel_denied", "job_title": job["title"]})
-    except Exception:
-        pass
+    await _ws_send(crew_id, {"type": "cancel_denied", "job_title": job["title"]})
     return {"message": "Cancel request denied"}
 
 
@@ -649,15 +640,11 @@ async def crew_complete(job_id: str, current_user: dict = Depends(get_current_us
         job["contractor_id"], "crew_submitted_complete", "Crew Submitted Completion",
         f"{current_user['name']} marked '{job['title']}' complete. Approve to finalize."
     )
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(job["contractor_id"], {
-            "type": "crew_submitted_complete",
-            "job_id": job_id, "job_title": job["title"],
-            "crew_name": current_user["name"], "crew_id": current_user["id"],
-        })
-    except Exception:
-        pass
+    await _ws_send(job["contractor_id"], {
+        "type": "crew_submitted_complete",
+        "job_id": job_id, "job_title": job["title"],
+        "crew_name": current_user["name"], "crew_id": current_user["id"],
+    })
 
     return {"message": "Completion submitted", "assignment_status": "pending_complete"}
 
@@ -711,14 +698,10 @@ async def approve_crew_complete(
     # Check if all done → complete job
     job_completed = await maybe_complete_job(job_id, actor_id=current_user["id"])
 
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(crew_id, {
-            "type": "completion_approved", "job_id": job_id,
-            "job_title": job["title"], "job_completed": job_completed,
-        })
-    except Exception:
-        pass
+    await _ws_send(crew_id, {
+        "type": "completion_approved", "job_id": job_id,
+        "job_title": job["title"], "job_completed": job_completed,
+    })
 
     return {"message": "Crew completion approved", "job_completed": job_completed}
 
@@ -1005,8 +988,8 @@ async def duplicate_job(job_id: str, current_user: dict = Depends(get_current_us
     try:
         from routes.ws_routes import manager
         await manager.broadcast_new_job(new_job)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("WS broadcast for duplicated job failed: %s", e)
 
     return {k: v for k, v in new_job.items() if k != "_id"}
 
@@ -1042,15 +1025,11 @@ async def accept_job(job_id: str, current_user: dict = Depends(get_current_user)
         if not result:
             raise HTTPException(status_code=409, detail="Emergency job already claimed or slot unavailable")
         new_crew = result["crew_accepted"]
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(job["contractor_id"], {
-                "type": "job_accepted", "job_id": job_id,
-                "crew_name": current_user["name"],
-                "crew_count": len(new_crew), "crew_needed": job["crew_needed"]
-            })
-        except Exception:
-            pass
+        await _ws_send(job["contractor_id"], {
+            "type": "job_accepted", "job_id": job_id,
+            "crew_name": current_user["name"],
+            "crew_count": len(new_crew), "crew_needed": job["crew_needed"]
+        })
         await create_notification(
             job["contractor_id"], "job_accepted", "Emergency Job Claimed",
             f"{current_user['name']} claimed your emergency job '{job['title']}'."
@@ -1061,15 +1040,11 @@ async def accept_job(job_id: str, current_user: dict = Depends(get_current_user)
         # Non-emergency: add to pending, contractor must approve
         await db.jobs.update_one({"id": job_id}, {"$push": {"crew_pending": current_user["id"]}})
         pending_count = len(job.get("crew_pending", [])) + 1
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(job["contractor_id"], {
-                "type": "new_applicant", "job_id": job_id,
-                "job_title": job["title"],
-                "crew_name": current_user["name"], "pending_count": pending_count
-            })
-        except Exception:
-            pass
+        await _ws_send(job["contractor_id"], {
+            "type": "new_applicant", "job_id": job_id,
+            "job_title": job["title"],
+            "crew_name": current_user["name"], "pending_count": pending_count
+        })
         await create_notification(
             job["contractor_id"], "new_applicant", "New Job Applicant",
             f"{current_user['name']} applied for '{job['title']}'. Review and approve."
@@ -1110,11 +1085,7 @@ async def approve_applicant(job_id: str, crew_id: str, current_user: dict = Depe
         await db.jobs.update_one({"id": job_id}, {"$set": {"crew_pending": new_pending}})
         await create_notification(crew_id, "application_declined", "Application Not Selected",
             f"Your application for '{job['title']}' was not selected. Keep applying!")
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(crew_id, {"type": "application_declined", "job_title": job["title"]})
-        except Exception:
-            pass
+        await _ws_send(crew_id, {"type": "application_declined", "job_title": job["title"]})
         return {"message": "Crew limit reached — applicant denied", "status": job.get("status")}
 
     new_pending  = [c for c in job["crew_pending"] if c != crew_id]
@@ -1138,25 +1109,17 @@ async def approve_applicant(job_id: str, crew_id: str, current_user: dict = Depe
     crew_name = crew["name"] if crew else "Crew member"
     await create_notification(crew_id, "application_approved", "Application Approved",
         f"Your application for '{job['title']}' was approved! Check your itinerary.")
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(crew_id, {"type": "application_approved", "job_title": job["title"]})
-        await manager.send_to_user(job["contractor_id"], {
-            "type": "job_accepted", "job_id": job_id,
-            "crew_name": crew_name, "crew_count": len(new_accepted), "crew_needed": job["crew_needed"]
-        })
-    except Exception:
-        pass
+    await _ws_send(crew_id, {"type": "application_approved", "job_title": job["title"]})
+    await _ws_send(job["contractor_id"], {
+        "type": "job_accepted", "job_id": job_id,
+        "crew_name": crew_name, "crew_count": len(new_accepted), "crew_needed": job["crew_needed"]
+    })
 
     # Notify each auto-denied applicant
     for denied_id in auto_denied_ids:
         await create_notification(denied_id, "application_declined", "Application Not Selected",
             f"Your application for '{job['title']}' was not selected. Keep applying!")
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(denied_id, {"type": "application_declined", "job_title": job["title"]})
-        except Exception:
-            pass
+        await _ws_send(denied_id, {"type": "application_declined", "job_title": job["title"]})
 
     return {"message": "Applicant approved", "status": new_status, "auto_denied": len(auto_denied_ids)}
 
@@ -1173,11 +1136,7 @@ async def decline_applicant(job_id: str, crew_id: str, current_user: dict = Depe
     await db.jobs.update_one({"id": job_id}, {"$set": {"crew_pending": new_pending}})
     await create_notification(crew_id, "application_declined", "Application Not Selected",
         f"Your application for '{job['title']}' was not selected. Keep applying!")
-    try:
-        from routes.ws_routes import manager
-        await manager.send_to_user(crew_id, {"type": "application_declined", "job_title": job["title"]})
-    except Exception:
-        pass
+    await _ws_send(crew_id, {"type": "application_declined", "job_title": job["title"]})
     return {"message": "Applicant declined"}
 
 
@@ -1281,13 +1240,9 @@ async def start_job(job_id: str, current_user: dict = Depends(get_current_user))
             crew_id, "job_started", "Job Started",
             f"'{job['title']}' has started! Please proceed to the job site."
         )
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(crew_id, {
-                "type": "job_started", "job_id": job_id, "job_title": job["title"]
-            })
-        except Exception:
-            pass
+        await _ws_send(crew_id, {
+            "type": "job_started", "job_id": job_id, "job_title": job["title"]
+        })
 
     return {"message": "Job started", "started_at": started_at}
 
@@ -1312,15 +1267,11 @@ async def complete_job(job_id: str, current_user: dict = Depends(get_current_use
     contractor = await db.users.find_one({"id": job["contractor_id"]}, {"_id": 0})
     if contractor:
         await send_job_completion_email(contractor["email"], contractor["name"], job["title"], sender_user=current_user)
-        try:
-            from routes.ws_routes import manager
-            await manager.send_to_user(job["contractor_id"], {
-                "type": "job_completed",
-                "job_id": job_id,
-                "job_title": job["title"]
-            })
-        except Exception:
-            pass
+        await _ws_send(job["contractor_id"], {
+            "type": "job_completed",
+            "job_id": job_id,
+            "job_title": job["title"]
+        })
 
     # Persistent notification for contractor
     await create_notification(

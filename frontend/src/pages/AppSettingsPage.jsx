@@ -58,7 +58,7 @@ export default function AppSettingsPage() {
   const push = usePush();
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
@@ -69,7 +69,7 @@ export default function AppSettingsPage() {
   const update = (key, value) => setSettings(s => ({ ...s, [key]: value }));
 
   const saveSettings = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     toast.success("Settings saved!");
@@ -87,7 +87,7 @@ export default function AppSettingsPage() {
 
   const resetSettings = () => {
     setSettings(DEFAULT_SETTINGS);
-    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
     toast.info("Settings reset to defaults.");
   };
 

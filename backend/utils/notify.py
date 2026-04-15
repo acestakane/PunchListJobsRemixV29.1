@@ -15,8 +15,8 @@ def _get_push():
         try:
             from utils import push_utils
             _push_utils = push_utils
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to import push_utils: %s", e)
     return _push_utils
 
 
@@ -43,8 +43,8 @@ async def create_notification(user_id: str, notif_type: str, title: str, body: s
     try:
         from routes.ws_routes import manager
         await manager.send_to_user(user_id, {"type": "notification", "notification": safe})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("WebSocket send failed for user %s: %s", user_id, e)
 
     # 2. Web Push (background, when tab is closed)
     push = _get_push()

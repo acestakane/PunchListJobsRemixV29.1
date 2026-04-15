@@ -308,7 +308,7 @@ export default function CrewDashboard() {
     const shareUrl = `${window.location.origin}/api/j/${job.id}`;
     const shareText = `${job.title} — $${job.pay_rate}/hr in ${job.location?.city || "your area"}`;
     if (navigator.share) {
-      try { await navigator.share({ title: job.title, text: shareText, url: shareUrl }); } catch { /* cancelled */ }
+      try { await navigator.share({ title: job.title, text: shareText, url: shareUrl }); } catch (e) { console.debug("Share cancelled or failed:", e); }
     } else {
       await navigator.clipboard.writeText(shareUrl);
       toast.success("Job link copied to clipboard!");

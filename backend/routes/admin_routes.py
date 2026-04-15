@@ -4,6 +4,7 @@ from auth import get_current_user, hash_password
 from models import AdminUserUpdate, TermsUpdate, SettingsUpdate, PasswordResetAdmin
 from utils.activity_log import log_activity
 from utils.rbac import require_permission
+from utils.user_helpers import parse_name_fields, build_base_user_doc
 from utils.analytics_helpers import (
     fetch_user_stats, fetch_job_stats, fetch_subscription_stats,
     fetch_revenue_data, fetch_performance_data, fetch_recent_users,
@@ -217,13 +218,7 @@ async def create_admin(data: dict, superadmin: dict = Depends(require_superadmin
     """SuperAdmin only: create a new admin account."""
     email = data.get("email", "").lower()
     password = data.get("password", "")
-    first_name = (data.get("first_name") or "").strip()
-    last_name  = (data.get("last_name")  or "").strip()
-    name = data.get("name", "").strip() or f"{first_name} {last_name}".strip()
-    if not first_name and not last_name and name:
-        parts = name.split(" ", 1)
-        first_name = parts[0]
-        last_name  = parts[1] if len(parts) > 1 else ""
+    first_name, last_name, name = parse_name_fields(data)
 
     if not email or not password or not name:
         raise HTTPException(status_code=400, detail="email, password, and name are required")
@@ -232,34 +227,13 @@ async def create_admin(data: dict, superadmin: dict = Depends(require_superadmin
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
-    now = datetime.now(timezone.utc).isoformat()
-
-    admin_doc = {
-        "id": str(uuid.uuid4()),
-        "email": email,
-        "password_hash": hash_password(password),
-        "role": "admin",
-        "name": name,
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": data.get("phone"),
-        "is_active": True,
-        "is_verified": True,
-        "created_at": now,
-        "trial_start_date": now,
-        "trial_end_date": (datetime.now(timezone.utc) + timedelta(days=3650)).isoformat(),
-        "subscription_status": "active",
-        "subscription_plan": "monthly",
-        "subscription_end": (datetime.now(timezone.utc) + timedelta(days=3650)).isoformat(),
-        "points": 0,
-        "referral_code": code,
-        "referred_by": None,
-        "bio": "", "trade": "", "skills": [], "profile_photo": None,
-        "availability": True, "is_online": True, "location": None,
-        "rating": 0.0, "rating_count": 0, "jobs_completed": 0,
-        "company_name": "", "logo": None, "hide_location": False, "favorite_crew": []
-    }
+    admin_doc = build_base_user_doc(
+        email=email, password=password, role="admin",
+        first_name=first_name, last_name=last_name, name=name,
+        phone=data.get("phone"),
+        is_verified=True, subscription_status="active", subscription_days=3650,
+    )
+    admin_doc["is_online"] = True  # admins default online
     await db.users.insert_one(admin_doc)
     safe = {k: v for k, v in admin_doc.items() if k not in ("password_hash", "_id")}
     return {"message": "Admin created", "admin": safe}
@@ -439,13 +413,7 @@ async def top_performers(admin: dict = Depends(require_admin)):
 async def create_user(data: dict, admin: dict = Depends(require_admin)):
     email = (data.get("email") or "").lower().strip()
     password = data.get("password", "")
-    first_name = (data.get("first_name") or "").strip()
-    last_name  = (data.get("last_name")  or "").strip()
-    name = data.get("name", "").strip() or f"{first_name} {last_name}".strip()
-    if not first_name and not last_name and name:
-        parts = name.split(" ", 1)
-        first_name = parts[0]
-        last_name  = parts[1] if len(parts) > 1 else ""
+    first_name, last_name, name = parse_name_fields(data)
     role = (data.get("role") or "crew").strip().lower()
 
     if not email or not password or not name:
@@ -457,26 +425,12 @@ async def create_user(data: dict, admin: dict = Depends(require_admin)):
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    now = datetime.now(timezone.utc).isoformat()
-    code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
-    doc = {
-        "id": str(uuid.uuid4()), "email": email,
-        "password_hash": hash_password(password),
-        "role": role, "name": name,
-        "first_name": first_name, "last_name": last_name,
-        "phone": data.get("phone"),
-        "is_active": True, "is_verified": False,
-        "created_at": now,
-        "trial_start_date": now,
-        "trial_end_date": (datetime.now(timezone.utc) + timedelta(days=30)).isoformat(),
-        "subscription_status": "trial",
-        "usage_month": datetime.now(timezone.utc).strftime("%Y-%m"),
-        "usage_count": 0, "points": 0, "referral_code": code,
-        "trade": "", "company_name": "", "bio": "", "skills": [],
-        "profile_photo": None, "availability": True, "is_online": False,
-        "location": None, "rating": 0.0, "rating_count": 0, "jobs_completed": 0,
-        "logo": None, "hide_location": False, "favorite_crew": [],
-    }
+    doc = build_base_user_doc(
+        email=email, password=password, role=role,
+        first_name=first_name, last_name=last_name, name=name,
+        phone=data.get("phone"),
+        is_verified=False, subscription_status="trial", subscription_days=30,
+    )
     await db.users.insert_one(doc)
     safe = {k: v for k, v in doc.items() if k not in ("password_hash", "_id")}
     await log_activity(actor=admin, action="admin.user.create", category="admin",
@@ -582,29 +536,18 @@ async def list_subadmins(admin: dict = Depends(require_admin)):
 async def create_subadmin(data: dict, admin: dict = Depends(require_admin)):
     email = (data.get("email") or "").lower().strip()
     password = data.get("password", "")
-    first_name = (data.get("first_name") or "").strip()
-    last_name  = (data.get("last_name")  or "").strip()
-    name = data.get("name", "").strip() or f"{first_name} {last_name}".strip()
-    if not first_name and not last_name and name:
-        parts = name.split(" ", 1)
-        first_name = parts[0]
-        last_name  = parts[1] if len(parts) > 1 else ""
+    first_name, last_name, name = parse_name_fields(data)
     if not email or not password or not name:
         raise HTTPException(status_code=400, detail="email, password, and name are required")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    now = datetime.now(timezone.utc).isoformat()
-    code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
-    doc = {
-        "id": str(uuid.uuid4()), "email": email, "password_hash": hash_password(password),
-        "role": "subadmin", "name": name,
-        "first_name": first_name, "last_name": last_name,
-        "phone": data.get("phone"),
-        "is_active": True, "is_verified": True, "created_at": now,
-        "subscription_status": "active", "points": 0, "referral_code": code,
-        "bio": "", "trade": "", "skills": [], "profile_photo": None,
-    }
+    doc = build_base_user_doc(
+        email=email, password=password, role="subadmin",
+        first_name=first_name, last_name=last_name, name=name,
+        phone=data.get("phone"),
+        is_verified=True, subscription_status="active", subscription_days=3650,
+    )
     await db.users.insert_one(doc)
     safe = {k: v for k, v in doc.items() if k not in ("password_hash", "_id")}
     await log_activity(actor=admin, action="admin.subadmin.create", category="admin",

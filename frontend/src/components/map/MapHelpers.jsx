@@ -7,7 +7,7 @@ export function FlyTo({ target }) {
   const map = useMap();
   useEffect(() => {
     if (!map || !target) return;
-    try { map.flyTo([target.lat, target.lng], target.zoom ?? map.getZoom(), { duration: 1.2 }); } catch (e) { /* map not ready */ }
+    try { map.flyTo([target.lat, target.lng], target.zoom ?? map.getZoom(), { duration: 1.2 }); } catch (e) { console.warn("FlyTo: map not ready", e); }
   }, [target, map]);
   return null;
 }
@@ -24,7 +24,7 @@ export function RecenterMap({ center }) {
   const map = useMap();
   useEffect(() => {
     if (!map || !center) return;
-    try { map.setView(center, map.getZoom()); } catch (e) { /* map not ready */ }
+    try { map.setView(center, map.getZoom()); } catch (e) { console.warn("RecenterMap: map not ready", e); }
   }, [center, map]);
   return null;
 }
@@ -36,7 +36,7 @@ export function AutoLocate({ onLocate }) {
     if (!map || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       ({ coords: { latitude: lat, longitude: lng } }) => {
-        try { map.flyTo([lat, lng], 12, { duration: 1.4 }); } catch (e) { /* map not ready */ }
+        try { map.flyTo([lat, lng], 12, { duration: 1.4 }); } catch (e) { console.warn("AutoLocate: map not ready", e); }
         onLocate?.({ lat, lng });
       },
       () => {}
@@ -65,7 +65,7 @@ export function RadiusCircle({ center, radiusKm }) {
       }).addTo(map);
     } catch (e) { console.warn("RadiusCircle map not ready:", e); }
     return () => {
-      if (circleRef.current) { try { circleRef.current.remove(); } catch (e) { /* map removed */ } circleRef.current = null; }
+      if (circleRef.current) { try { circleRef.current.remove(); } catch (e) { console.warn("RadiusCircle cleanup:", e); } circleRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center?.lat, center?.lng, radiusKm, map]);
