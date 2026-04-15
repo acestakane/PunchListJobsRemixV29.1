@@ -238,7 +238,6 @@ async def paypal_pay(req: PayPalPaymentRequest, current_user: dict = Depends(get
     if not req.order_id:
         raise HTTPException(status_code=400, detail="PayPal order ID is required")
 
-    plan_info = PLANS[req.plan]
     tx_id = req.order_id
 
     await activate_subscription(current_user["id"], req.plan, tx_id, "paypal")

@@ -724,7 +724,6 @@ async def approve_crew_complete(
     # Award partial points to the approved crew member now
     await db.users.update_one({"id": crew_id}, {"$inc": {"points": 10}})
 
-    crew_user = await db.users.find_one({"id": crew_id}, {"_id": 0, "name": 1})
     await create_notification(
         crew_id, "completion_approved", "Completion Approved",
         f"'{job['title']}' completion approved by contractor."
