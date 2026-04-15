@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import axios from "axios";
-import {
-  Camera, MapPin, Navigation, CheckCircle, ArrowRight, X, Upload, ToggleLeft, ToggleRight
-} from "lucide-react";
+import { CheckCircle, X } from "lucide-react";
+import { OnboardingStep1 } from "./onboarding/OnboardingStep1";
+import { OnboardingStep2 } from "./onboarding/OnboardingStep2";
+import { OnboardingStep3 } from "./onboarding/OnboardingStep3";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const STORAGE_KEY = "punchlistjobs_onboarding_done";
@@ -166,156 +167,36 @@ export default function OnboardingModal({ onClose }) {
         {/* Step Content */}
         <div className="p-6">
           {step === 1 && (
-            <div className="text-center">
-              <h3 className="font-bold text-[#050A30] dark:text-white text-lg mb-2" style={{ fontFamily: "Manrope, sans-serif" }}>
-                STEP 1 — Upload Your Photo
-              </h3>
-              <p className="text-slate-500 text-sm mb-6">Contractors are more likely to hire crew with a profile photo.</p>
-
-              <div className="relative inline-block mb-6">
-                <div className="w-28 h-28 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex items-center justify-center border-4 border-[#7EC8E3]">
-                  {profilePhoto ? (
-                    <img src={profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <Camera className="w-10 h-10 text-slate-400" />
-                  )}
-                </div>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="absolute bottom-0 right-0 w-9 h-9 bg-[#0000FF] rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700"
-                  data-testid="onboarding-upload-photo">
-                  <Upload className="w-4 h-4 text-white" />
-                </button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-              </div>
-
-              {uploading && <p className="text-sm text-blue-500 mb-4">Uploading...</p>}
-
-              <div className="flex gap-3">
-                <button onClick={() => setStep(2)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border-2 border-slate-200 dark:border-slate-700 text-slate-500 rounded-xl text-sm font-semibold"
-                  data-testid="skip-step-1">
-                  Skip for now
-                </button>
-                <button onClick={() => setStep(2)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0000FF] text-white rounded-xl text-sm font-bold hover:bg-blue-700"
-                  data-testid="next-step-1">
-                  Next <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+            <OnboardingStep1
+              profilePhoto={profilePhoto}
+              uploading={uploading}
+              fileRef={fileRef}
+              onFileChange={handlePhotoUpload}
+              onNext={() => setStep(2)}
+            />
           )}
-
           {step === 2 && (
-            <div>
-              <h3 className="font-bold text-[#050A30] dark:text-white text-lg mb-2" style={{ fontFamily: "Manrope, sans-serif" }}>
-                STEP 2 — Add Your Address
-              </h3>
-              <p className="text-slate-500 text-sm mb-4">Your exact address is never shown publicly — only street name and city.</p>
-
-              <div className="relative mb-1" ref={suggestionsRef}>
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 z-10" />
-                <input
-                  type="text"
-                  value={address}
-                  onChange={e => handleAddressChange(e.target.value)}
-                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-                  placeholder="123 Main St, Atlanta, GA 30301"
-                  className="w-full pl-9 pr-8 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:border-[#0000FF] dark:bg-slate-800 dark:text-white"
-                  data-testid="onboarding-address-input"
-                  onKeyPress={e => e.key === "Enter" && saveAddress()}
-                  autoComplete="off"
-                />
-                {fetchingSuggestions && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-[#0000FF] border-t-transparent rounded-full animate-spin" />
-                )}
-
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                    {suggestions.map((s, i) => (
-                      <li key={i}
-                        onMouseDown={() => selectSuggestion(s)}
-                        className="flex items-start gap-2 px-3 py-2.5 cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700 last:border-0">
-                        <MapPin className="w-3.5 h-3.5 text-[#0000FF] mt-0.5 flex-shrink-0" />
-                        <div>
-                          <p className="text-xs font-semibold text-[#050A30] dark:text-white leading-tight">
-                            {s.city && s.state ? `${s.city}, ${s.state}` : s.full_address.split(",").slice(0, 2).join(",")}
-                          </p>
-                          <p className="text-xs text-slate-400 truncate max-w-xs">{s.full_address}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <p className="text-xs text-slate-400 mb-3 pl-1">Start typing to auto-complete your address</p>
-
-              <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-3 text-xs text-blue-700 dark:text-blue-300 mb-5">
-                <strong>Privacy:</strong> We only show street name + city on the map. Your exact address is never visible to other users.
-              </div>
-
-              <div className="flex gap-3">
-                <button onClick={() => setStep(3)}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 border-2 border-slate-200 dark:border-slate-700 text-slate-500 rounded-xl text-sm font-semibold"
-                  data-testid="skip-step-2">
-                  Skip for now
-                </button>
-                <button onClick={async () => { await saveAddress(); setStep(3); }}
-                  disabled={savingAddress || !address.trim()}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0000FF] text-white rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
-                  data-testid="next-step-2">
-                  {savingAddress ? "Saving..." : <><span>Save & Next</span> <ArrowRight className="w-4 h-4" /></>}
-                </button>
-              </div>
-            </div>
+            <OnboardingStep2
+              address={address}
+              suggestions={suggestions}
+              showSuggestions={showSuggestions}
+              fetchingSuggestions={fetchingSuggestions}
+              suggestionsRef={suggestionsRef}
+              savingAddress={savingAddress}
+              onAddressChange={handleAddressChange}
+              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+              onSuggestionSelect={selectSuggestion}
+              onSkip={() => setStep(3)}
+              onSaveAndNext={async () => { await saveAddress(); setStep(3); }}
+            />
           )}
-
           {step === 3 && (
-            <div className="text-center">
-              <h3 className="font-bold text-[#050A30] dark:text-white text-lg mb-2" style={{ fontFamily: "Manrope, sans-serif" }}>
-                STEP 3 — Enable Map Visibility
-              </h3>
-              <p className="text-slate-500 text-sm mb-6">Flip the switch to appear on the live job map and get hired.</p>
-
-              <div className="bg-slate-50 dark:bg-slate-800 rounded-2xl p-6 mb-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-left">
-                    <p className="font-bold text-[#050A30] dark:text-white">
-                      {isOnline ? "LIVE ON MAP" : "OFFLINE"}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {isOnline ? "Contractors can find and hire you" : "Flip switch to appear on map"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setIsOnline(!isOnline)}
-                    className={`w-16 h-8 rounded-full flex items-center px-1 transition-colors cursor-pointer ${isOnline ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`}
-                    data-testid="onboarding-visibility-toggle">
-                    <div className={`w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${isOnline ? "translate-x-8" : ""}`} />
-                  </button>
-                </div>
-
-                {isOnline && (
-                  <div className="flex items-center gap-2 mt-3 text-emerald-600 text-sm font-semibold">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    You will appear on the live job map
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-3">
-                <button onClick={markDone}
-                  className="flex-1 py-2.5 border-2 border-slate-200 dark:border-slate-700 text-slate-500 rounded-xl text-sm font-semibold"
-                  data-testid="skip-step-3">
-                  Maybe later
-                </button>
-                <button onClick={async () => { await saveOnlineStatus(); markDone(); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0000FF] text-white rounded-xl text-sm font-bold hover:bg-blue-700"
-                  data-testid="finish-onboarding">
-                  <CheckCircle className="w-4 h-4" /> Finish Setup
-                </button>
-              </div>
-            </div>
+            <OnboardingStep3
+              isOnline={isOnline}
+              onToggle={() => setIsOnline(!isOnline)}
+              onSkip={markDone}
+              onFinish={async () => { await saveOnlineStatus(); markDone(); }}
+            />
           )}
         </div>
       </div>
