@@ -36,18 +36,26 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - Updated CrewProfileModal.jsx to fetch public settings and conditionally render travel/transportation info when enabled
 
 ### 2026-04-14 — Job Lifecycle Refactor (Spec-Compliant)
-- **New `utils/assignment_helpers.py`**: CrewAssignment state machine (assigned→pending_complete→approved_complete|removed), `maybe_complete_job`, `force_close_assignments`, `log_status_history`, `get_or_create_assignment`
+- **New `utils/assignment_helpers.py`**: CrewAssignment state machine (assigned→pending_complete→approved_complete|removed)
 - **New `crew_assignments` collection**: Unique(job_id, crew_id), indexed on status/pending_complete_at
 - **New `status_history` collection**: Append-only audit log for every state transition
-- **`job_helpers.py`**: `RATING_VALID_STATUSES = (completed, cancelled, suspended)` — eliminates premature ratings
-- **`job_routes.py`**: `crew-complete` rewritten (idempotent, assignment-backed), new `approve-complete` per-crew, new `remove` endpoint, `cancel_job` + `suspend_job` call `force_close_assignments`, `verify_job` uses `maybe_complete_job`
-- **`server.py`**: DB indices, startup migration (legacy crew_accepted → assignments), `auto_approve_pending_crew()` 72h scheduler
-- **`JobsItinerary.jsx`**: Premature rating removed from `handleCrewComplete`, PAST_STATUSES uses `my_assignment_status`, per-crew Approve buttons for contractor when `pending_complete`, `crewCompleteLoading` debounce guard
-- **`ContractorDashboard.jsx`**: `approveCrewComplete` helper, `pending_complete` label, per-crew approval panel
-- Created `backend/utils/job_helpers.py` with RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES constants + 4 guard helpers
-- Refactored `job_routes.py`: rate_user() and skip_rating() each trimmed ~15 lines of duplicate validation; status constants shared
-- ContractorDashboard.jsx: 7 repetitive status transition functions consolidated into single `jobAction` helper (~45 lines removed)
-- Travel Radius end-to-end: `travel_radius_miles` field in models.py, `min_travel_radius` query filter in user_routes.py, ProfilePage edit+view, CrewProfileModal display, ContractorDashboard crew search dropdown
+- **`job_helpers.py`**: Centralized constants (RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES)
+- **`job_routes.py`**: Idempotent crew-complete, per-crew approve-complete, 72h auto-approve APScheduler worker
+- **`ContractorDashboard.jsx`**: approveCrewComplete helper, per-crew approval panel
+- Travel Radius: `travel_radius_miles` field in models.py, profile edit+view, crew search dropdown filter
+
+### Feb 2026 — P0 Security Fixes + P1 Component Refactor
+- **P0 Bug Fix**: Fixed TDZ error (`can't access lexical declaration 'isCrew' before initialization`) in JobsItinerary.jsx — moved `isContractor`/`isCrew` declarations to top of component before derived computed values
+- **P0 Code Quality**: Removed 2 unused variables (F841) in job_routes.py and payment_routes.py; all Python/JS lints clean
+- **P1 Frontend Refactor** — extracted sub-components from large files:
+  - `JobsItinerary.jsx` (894→424 lines): extracted to `/components/itinerary/` folder (ItineraryCard, EmptyPane, ItineraryRatingModal, DisputeModal, ItineraryActionBar)
+  - `ContractorDashboard.jsx`: extracted ApplicantsPanel and CancelRequestsPanel to `/components/contractor/`
+  - `OnboardingModal.jsx` (325→110 lines): extracted OnboardingStep1/2/3 to `/components/onboarding/`
+  - `JobMap.jsx` (624→220 lines): extracted mapConstants.js + MapHelpers.jsx to `/components/map/`
+  - `ProfilePage.jsx`: extracted SocialShareButtons to `/components/profile/`
+- **P1 Backend Refactor** — extracted analytics_helpers.py from admin_routes.py:
+  - Created `/backend/utils/analytics_helpers.py` with fetch_user_stats(), fetch_job_stats(), fetch_subscription_stats(), fetch_revenue_data(), fetch_performance_data(), fetch_recent_users()
+  - `admin_routes.py` get_analytics() now delegates to helpers (75→12 lines)
 
 ## Prioritized Backlog
 
@@ -55,11 +63,14 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - None
 
 ### P1 — High Priority
-- None outstanding
+- Add `/api/jobs/{id}/assignments` GET endpoint for admin audit view
+- Wire WebSocket `job_completed_final` event to trigger rating prompt in Itinerary
+- Component Refactor Phase 2: Further split CrewDashboard.jsx + auth_routes.py register()
 
 ### P2 — Medium Priority
-- Phase 7 done
-- Phase 8 done
+- Add `status_history` tab to Admin Job detail view
+- Square live keys when ready
+- Email: configure SMTP credentials (currently mocked)
 
 ### P3 — Low Priority / Tech Debt
 - Email notifications (send_job_completion_email is wired but SMTP not configured)
