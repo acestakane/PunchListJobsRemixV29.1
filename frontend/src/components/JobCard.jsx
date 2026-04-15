@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, Clock, DollarSign, Users, AlertTriangle, Bookmark, CheckCircle, Eye, MessageCircle, Share2 } from "lucide-react";
+import { MapPin, Clock, DollarSign, Users, AlertTriangle, Bookmark, CheckCircle, Eye, MessageCircle, Share2, Navigation } from "lucide-react";
 
 const STATUS_COLORS = {
   open: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
@@ -48,7 +48,7 @@ function formatTime(timeStr) {
   } catch { return timeStr; }
 }
 
-export default function JobCard({ job, onAccept, onStart, onComplete, onVerify, onRate, onPreview, onShare, currentUser, isAccepted, onRemoveRating, isPending }) {
+export default function JobCard({ job, onAccept, onStart, onComplete, onVerify, onRate, onPreview, onShare, currentUser, isAccepted, onRemoveRating, isPending, userLocation }) {
   const navigate = useNavigate();
   const isCrew = currentUser?.role === "crew";
   const isContractor = currentUser?.role === "contractor";
@@ -96,6 +96,12 @@ export default function JobCard({ job, onAccept, onStart, onComplete, onVerify, 
         <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 min-w-0">
           <MapPin className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0" />
           <span className="truncate text-xs sm:text-sm">{job.location?.city || job.location?.address?.split(",")[0] || "N/A"}</span>
+          {job.distance_miles != null && (
+            <span className="flex items-center gap-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded-full ml-1 flex-shrink-0">
+              <Navigation className="w-2.5 h-2.5" />
+              {job.distance_miles} mi
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 min-w-0">
           <Clock className="w-3.5 h-3.5 text-[#0000FF] flex-shrink-0" />

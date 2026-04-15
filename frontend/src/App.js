@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { WebSocketProvider } from "./contexts/WebSocketContext";
+import { PushProvider } from "./contexts/PushContext";
 import { Toaster } from "sonner";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
@@ -121,8 +122,10 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <WebSocketProvider>
-              <AppRoutes />
-              <Toaster position="top-right" richColors />
+              <PushProvider>
+                <AppRoutes />
+                <Toaster position="top-right" richColors />
+              </PushProvider>
             </WebSocketProvider>
           </BrowserRouter>
         </AuthProvider>

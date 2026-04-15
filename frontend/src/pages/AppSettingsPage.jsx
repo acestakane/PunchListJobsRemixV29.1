@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import Navbar from "../components/Navbar";
 import { toast } from "sonner";
+import { usePush } from "../contexts/PushContext";
 import {
   Volume2, VolumeX, Bell, BellOff, Vibrate, ClipboardList, UserCheck,
-  UserX, BarChart2, Save, RotateCcw, Play
+  UserX, BarChart2, Save, RotateCcw, Play, Smartphone, CheckCircle, SendHorizonal
 } from "lucide-react";
 
 const STORAGE_KEY = "punchlistjobs_app_settings";
@@ -54,6 +55,7 @@ export default function AppSettingsPage() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const audioCtx = useRef(null);
+  const push = usePush();
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -170,18 +172,60 @@ export default function AppSettingsPage() {
           <SettingRow
             icon={Bell}
             label="Browser Notifications"
-            description="Push notifications that appear even when the app is in the background"
+            description="In-app banners that appear even when the app is in the background"
             testId="browser-notifications-setting">
             <Toggle checked={settings.browserNotifications} onChange={v => update("browserNotifications", v)} testId="browser-notifications-toggle" />
           </SettingRow>
+        </div>
 
-          <SettingRow
-            icon={Bell}
-            label="Push Notifications"
-            description="Receive push notifications on your mobile device"
-            testId="push-notifications-setting">
-            <Toggle checked={settings.pushNotifications} onChange={v => update("pushNotifications", v)} testId="push-notifications-toggle" />
-          </SettingRow>
+        {/* Web Push (PWA) */}
+        <div className="card p-5 mb-4">
+          <h2 className="font-bold text-[#050A30] dark:text-white text-base mb-1 flex items-center gap-2" style={{ fontFamily: "Manrope, sans-serif" }}>
+            <Smartphone className="w-4 h-4 text-[#0000FF]" /> Web Push Notifications
+          </h2>
+          <p className="text-xs text-slate-400 mb-4">Get notified even when the browser is closed — works like a native app</p>
+          {!push.supported ? (
+            <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-700 rounded-xl">
+              <BellOff className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700 dark:text-amber-300">Your browser doesn't support Web Push. Try Chrome, Edge, or Firefox.</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {push.subscribed ? (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle className="w-4 h-4" /> Push enabled on this device
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-500">
+                    {push.permission === "denied" ? "Permission denied — allow in browser settings" : "Not enabled on this device"}
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {push.subscribed ? (
+                  <>
+                    <button onClick={push.sendTestPush}
+                      className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-2 border-[#0000FF] text-[#0000FF] rounded-lg hover:bg-blue-50 transition-colors"
+                      data-testid="test-push-btn">
+                      <SendHorizonal className="w-3.5 h-3.5" /> Test Push
+                    </button>
+                    <button onClick={push.unsubscribe}
+                      className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-2 border-slate-200 dark:border-slate-700 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors"
+                      data-testid="unsubscribe-push-btn">
+                      Disable
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={push.subscribe} disabled={push.permission === "denied"}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold bg-[#0000FF] text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                    data-testid="enable-push-btn">
+                    <Bell className="w-4 h-4" /> Enable Push
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Alert Types */}

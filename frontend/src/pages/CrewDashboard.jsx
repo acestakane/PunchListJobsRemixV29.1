@@ -180,33 +180,49 @@ export default function CrewDashboard() {
 
   const toggleLocation = () => {
     if (!locationEnabled) {
-      if (navigator.geolocation) {
-        const id = navigator.geolocation.watchPosition(
-          (pos) => {
-            const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            setUserLocation(loc);
-            sendLocation(loc.lat, loc.lng);
-            axios.post(`${API}/users/location`, { lat: loc.lat, lng: loc.lng }).catch(() => {});
-          },
-          (err) => { if (err.code === 1) toast.error("Location access denied. Please allow in browser settings."); },
-          { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }
-        );
-        watchIdRef.current = id;
-        setLocationEnabled(true);
-        localStorage.setItem("gps_enabled", "1");
-        toast.success("Live GPS tracking enabled. Showing nearby jobs.");
+      if (!navigator.geolocation) {
+        toast.error("Geolocation is not supported by your browser.");
+        return;
       }
+      const id = navigator.geolocation.watchPosition(
+        (pos) => {
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          setUserLocation(loc);
+          sendLocation(loc.lat, loc.lng);
+          axios.post(`${API}/users/location`, { lat: loc.lat, lng: loc.lng }).catch(() => {});
+        },
+        (err) => {
+          if (err.code === 1) toast.error("Location access denied. Please allow in browser settings.");
+          else toast.error("Could not get your location. Please try again.");
+          setLocationEnabled(false);
+          watchIdRef.current = null;
+        },
+        { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 }
+      );
+      watchIdRef.current = id;
+      setLocationEnabled(true);
+      sessionStorage.setItem("gps_enabled", "1");
+      toast.success("GPS enabled — showing nearest jobs first.");
     } else {
       if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
       setLocationEnabled(false); setUserLocation(null);
-      localStorage.removeItem("gps_enabled");
-      toast.info("Location tracking disabled.");
+      sessionStorage.removeItem("gps_enabled");
+      toast.info("GPS tracking disabled.");
     }
   };
 
-  // Auto-restore GPS from previous session
+  // Auto-enable GPS if browser already granted permission (no re-prompt needed)
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    if (navigator.permissions) {
+      navigator.permissions.query({ name: "geolocation" }).then((result) => {
+        if (result.state === "granted") toggleLocation();
+      });
+    } else if (sessionStorage.getItem("gps_enabled") === "1") {
+      toggleLocation();
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (localStorage.getItem("gps_enabled") === "1") toggleLocation(); }, []);
+  }, []);
 
   useEffect(() => { return () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); }; }, []);
 
@@ -380,6 +396,15 @@ export default function CrewDashboard() {
                 onRefresh={fetchJobs} onRadiusChange={setRadius} height="500px" />
             ) : (
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                {locationEnabled && userLocation && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    <span className="relative flex h-2 w-2 flex-shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+                    </span>
+                    GPS active — jobs sorted by distance from your location
+                  </div>
+                )}
                 {loading ? (
                   Array(3).fill(0).map((_, i) => <div key={i} className="card p-4 animate-pulse h-32 bg-slate-200 dark:bg-slate-800" />)
                 ) : jobs.length === 0 ? (
@@ -409,7 +434,8 @@ export default function CrewDashboard() {
                     <JobCard job={job} onAccept={acceptJob} onComplete={completeJob} onPreview={setSelectedJob}
                       onShare={acceptedIds.includes(job.id) && !pendingIds.includes(job.id) ? shareJob : undefined}
                       currentUser={user} isAccepted={acceptedIds.includes(job.id) || pendingIds.includes(job.id)}
-                      isPending={pendingIds.includes(job.id)} isExpired={isExpired} />
+                      isPending={pendingIds.includes(job.id)} isExpired={isExpired}
+                      userLocation={locationEnabled ? userLocation : null} />
                   </div>
                 ))}
               </div>

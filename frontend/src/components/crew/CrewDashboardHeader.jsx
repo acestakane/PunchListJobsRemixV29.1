@@ -57,8 +57,21 @@ export function CrewDashboardHeader({
             ${locationEnabled ? "bg-blue-600 border-blue-600 text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500"}`}
           data-testid="location-toggle"
         >
-          <Navigation className="w-4 h-4" />
-          {locationEnabled ? "LIVE ON MAP" : "Enable Location"}
+          {locationEnabled ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-300 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+              </span>
+              <Navigation className="w-4 h-4" />
+              GPS ON
+            </>
+          ) : (
+            <>
+              <Navigation className="w-4 h-4" />
+              Use My Location
+            </>
+          )}
         </button>
 
         <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1">

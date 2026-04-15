@@ -118,11 +118,16 @@ async def list_jobs(
 
     jobs = await db.jobs.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
 
-    # Filter by radius if location provided
+    # Filter by radius if location provided, and annotate distance
     if lat and lng:
-        jobs = [j for j in jobs if j.get("location") and haversine_distance(
-            lat, lng, j["location"]["lat"], j["location"]["lng"]
-        ) <= radius]
+        filtered = []
+        for j in jobs:
+            if j.get("location") and j["location"].get("lat") and j["location"].get("lng"):
+                d = haversine_distance(lat, lng, j["location"]["lat"], j["location"]["lng"])
+                if d <= radius:
+                    j["distance_miles"] = round(d, 1)
+                    filtered.append(j)
+        jobs = filtered
 
     # Smart matching for crew: weighted distance + trade + skills
     if smart_match and current_user["role"] == "crew" and jobs:
