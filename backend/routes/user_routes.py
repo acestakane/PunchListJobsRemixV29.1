@@ -141,6 +141,8 @@ async def update_profile(data: ProfileUpdate, current_user: dict = Depends(get_c
     # Check if profile just reached 100% — award bonus
     bonus = await check_and_award_profile_bonus(current_user["id"])
     updated = await db.users.find_one({"id": current_user["id"]}, {"_id": 0})
+    if not updated:
+        raise HTTPException(status_code=404, detail="User not found after update")
     resp = user_to_response(updated)
     if bonus:
         resp["profile_bonus_awarded"] = bonus

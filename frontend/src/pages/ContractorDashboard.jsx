@@ -278,7 +278,7 @@ export default function ContractorDashboard() {
   };
 
   const shareJob = (job) => {
-    const url = `${window.location.origin}/jobs/${job.id}`;
+    const url = `${window.location.origin}/j/${job.id}`;
     if (navigator.share) {
       navigator.share({ title: job.title, text: `$${job.pay_rate}/hr · ${job.trade}`, url }).catch(() => {});
     } else {

@@ -40,7 +40,21 @@ export default function ArchivePage() {
     }
   }, []);
 
-  useEffect(() => { fetchArchive(); }, [fetchArchive]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await axios.get(`${API}/jobs/archive`);
+        if (!cancelled) setJobs(res.data);
+      } catch {
+        if (!cancelled) toast.error("Failed to load archive");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const unarchive = async (jobId) => {
     try {

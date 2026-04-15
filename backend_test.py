@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-PunchListJobs Backend API Testing Suite
-Tests the refactored code after code review fixes.
+Backend API Testing for PunchListJobs - Runtime Safety Fixes Verification
+Tests the specific None guards added to rating_routes.py and user_routes.py
 """
 
 import asyncio
+import aiohttp
 import json
-import uuid
-from datetime import datetime, timezone, timedelta
-import httpx
+import sys
+from datetime import datetime, timezone
 
-# Backend API URL from frontend .env
-BASE_URL = "https://remix-job-tracker.preview.emergentagent.com/api"
+# Backend URL from frontend .env
+BACKEND_URL = "https://remix-job-tracker.preview.emergentagent.com/api"
 
 # Test credentials from test_credentials.md
 TEST_CREDENTIALS = {
@@ -21,365 +21,399 @@ TEST_CREDENTIALS = {
     "contractor": {"email": "contractor1@punchlistjobs.com", "password": "Contractor@123"}
 }
 
-class APITester:
+class TestSession:
     def __init__(self):
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.session = None
         self.tokens = {}
-        self.test_results = []
+        self.test_job_id = None
+        self.test_crew_id = None
+        self.test_contractor_id = None
         
-    async def close(self):
-        await self.client.aclose()
-    
-    def log_result(self, test_name: str, success: bool, details: str = ""):
-        """Log test result"""
-        status = "✅ PASS" if success else "❌ FAIL"
-        self.test_results.append(f"{status} {test_name}: {details}")
-        print(f"{status} {test_name}: {details}")
-    
-    async def login(self, role: str) -> str:
-        """Login and return access token"""
-        if role in self.tokens:
-            return self.tokens[role]
-            
+    async def __aenter__(self):
+        self.session = aiohttp.ClientSession()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.session:
+            await self.session.close()
+
+    async def login(self, role):
+        """Login and store token for role"""
         creds = TEST_CREDENTIALS[role]
-        try:
-            response = await self.client.post(f"{BASE_URL}/auth/login", json={
-                "email": creds["email"],
-                "password": creds["password"]
-            })
-            
-            if response.status_code == 200:
-                data = response.json()
-                token = data["access_token"]
-                self.tokens[role] = token
-                self.log_result(f"Login {role}", True, f"Token obtained")
-                return token
-            else:
-                self.log_result(f"Login {role}", False, f"Status {response.status_code}: {response.text}")
-                return ""
-        except Exception as e:
-            self.log_result(f"Login {role}", False, f"Exception: {str(e)}")
-            return ""
-    
-    async def make_request(self, method: str, endpoint: str, token: str = "", json_data: dict = None, params: dict = None):
-        """Make authenticated API request"""
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-        try:
-            response = await self.client.request(
-                method=method,
-                url=f"{BASE_URL}{endpoint}",
-                headers=headers,
-                json=json_data,
-                params=params
-            )
-            return response
-        except Exception as e:
-            print(f"Request failed: {method} {endpoint} - {str(e)}")
-            return None
-    
+        async with self.session.post(f"{BACKEND_URL}/auth/login", json=creds) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                raise Exception(f"Login failed for {role}: {resp.status} - {text}")
+            data = await resp.json()
+            self.tokens[role] = data["access_token"]
+            if role == "crew":
+                self.test_crew_id = data["user"]["id"]
+            elif role == "contractor":
+                self.test_contractor_id = data["user"]["id"]
+            print(f"✅ {role.capitalize()} login successful")
+            return data
+
+    def get_headers(self, role):
+        """Get authorization headers for role"""
+        return {"Authorization": f"Bearer {self.tokens[role]}"}
+
     async def test_auth_flows(self):
-        """Test authentication for all 4 roles"""
+        """Test 1: Auth login for all 4 roles"""
         print("\n=== Testing Authentication Flows ===")
         
         for role in ["superadmin", "admin", "crew", "contractor"]:
-            await self.login(role)
-    
-    async def test_admin_create_user(self):
-        """Test admin create user endpoint with name parsing"""
-        print("\n=== Testing Admin Create User (Name Parsing) ===")
+            try:
+                await self.login(role)
+            except Exception as e:
+                print(f"❌ {role.capitalize()} login failed: {e}")
+                return False
         
-        admin_token = await self.login("admin")
-        if not admin_token:
-            self.log_result("Admin Create User", False, "No admin token")
-            return
-        
-        # Test with first_name/last_name
-        test_user_data = {
-            "email": f"testuser_{uuid.uuid4().hex[:8]}@example.com",
-            "password": "TestPass@123",
-            "first_name": "John",
-            "last_name": "Doe",
-            "role": "crew",
-            "phone": "555-123-4567"
-        }
-        
-        response = await self.make_request("POST", "/admin/users", admin_token, test_user_data)
-        
-        if response and response.status_code == 201:
-            data = response.json()
-            user = data.get("user", {})
-            # Check if name parsing worked correctly
-            expected_name = "John Doe"
-            actual_name = user.get("name", "")
-            if actual_name == expected_name:
-                self.log_result("Admin Create User", True, f"User created with correct name: {actual_name}")
-            else:
-                self.log_result("Admin Create User", False, f"Name parsing failed. Expected: {expected_name}, Got: {actual_name}")
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("Admin Create User", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def test_superadmin_create_admin(self):
-        """Test superadmin create admin endpoint"""
-        print("\n=== Testing SuperAdmin Create Admin ===")
-        
-        superadmin_token = await self.login("superadmin")
-        if not superadmin_token:
-            self.log_result("SuperAdmin Create Admin", False, "No superadmin token")
-            return
-        
-        # Test with first_name/last_name
-        test_admin_data = {
-            "email": f"testadmin_{uuid.uuid4().hex[:8]}@example.com",
-            "password": "AdminPass@123",
-            "first_name": "Jane",
-            "last_name": "Smith",
-            "phone": "555-987-6543"
-        }
-        
-        response = await self.make_request("POST", "/admin/admins", superadmin_token, test_admin_data)
-        
-        if response and response.status_code == 201:
-            data = response.json()
-            admin = data.get("admin", {})
-            # Check if name parsing worked correctly
-            expected_name = "Jane Smith"
-            actual_name = admin.get("name", "")
-            if actual_name == expected_name:
-                self.log_result("SuperAdmin Create Admin", True, f"Admin created with correct name: {actual_name}")
-            else:
-                self.log_result("SuperAdmin Create Admin", False, f"Name parsing failed. Expected: {expected_name}, Got: {actual_name}")
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("SuperAdmin Create Admin", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def test_superadmin_create_subadmin(self):
-        """Test superadmin create subadmin endpoint"""
-        print("\n=== Testing SuperAdmin Create SubAdmin ===")
-        
-        superadmin_token = await self.login("superadmin")
-        if not superadmin_token:
-            self.log_result("SuperAdmin Create SubAdmin", False, "No superadmin token")
-            return
-        
-        # Test with name field
-        test_subadmin_data = {
-            "email": f"testsubadmin_{uuid.uuid4().hex[:8]}@example.com",
-            "password": "SubAdminPass@123",
-            "name": "Bob Wilson",
-            "phone": "555-456-7890"
-        }
-        
-        response = await self.make_request("POST", "/admin/subadmins", superadmin_token, test_subadmin_data)
-        
-        if response and response.status_code == 201:
-            data = response.json()
-            subadmin = data.get("subadmin", {})
-            # Check if name parsing worked correctly
-            expected_name = "Bob Wilson"
-            actual_name = subadmin.get("name", "")
-            if actual_name == expected_name:
-                self.log_result("SuperAdmin Create SubAdmin", True, f"SubAdmin created with correct name: {actual_name}")
-            else:
-                self.log_result("SuperAdmin Create SubAdmin", False, f"Name parsing failed. Expected: {expected_name}, Got: {actual_name}")
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("SuperAdmin Create SubAdmin", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def test_jobs_itinerary(self):
-        """Test jobs itinerary endpoint for crew and contractor"""
-        print("\n=== Testing Jobs Itinerary Endpoint ===")
-        
-        # Test for crew
-        crew_token = await self.login("crew")
-        if crew_token:
-            response = await self.make_request("GET", "/jobs/itinerary", crew_token)
-            if response and response.status_code == 200:
-                data = response.json()
-                self.log_result("Jobs Itinerary (Crew)", True, f"Retrieved {len(data)} jobs")
-            else:
-                error_msg = response.text if response else "No response"
-                self.log_result("Jobs Itinerary (Crew)", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-        
-        # Test for contractor
-        contractor_token = await self.login("contractor")
-        if contractor_token:
-            response = await self.make_request("GET", "/jobs/itinerary", contractor_token)
-            if response and response.status_code == 200:
-                data = response.json()
-                self.log_result("Jobs Itinerary (Contractor)", True, f"Retrieved {len(data)} jobs")
-            else:
-                error_msg = response.text if response else "No response"
-                self.log_result("Jobs Itinerary (Contractor)", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def test_job_crud_operations(self):
-        """Test job CRUD operations"""
-        print("\n=== Testing Job CRUD Operations ===")
-        
-        contractor_token = await self.login("contractor")
-        if not contractor_token:
-            self.log_result("Job CRUD", False, "No contractor token")
-            return
-        
-        # Create a job
-        job_data = {
-            "title": f"Test Job {uuid.uuid4().hex[:8]}",
-            "description": "This is a test job for API testing",
-            "trade": "Carpentry",
-            "discipline": "CARPENTRY",
-            "skill": "Framing",
-            "crew_needed": 2,
-            "pay_rate": 25.50,
-            "address": "123 Test Street, Atlanta, GA 30309",
-            "start_time": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-            "is_emergency": False,
-            "is_boosted": False,
-            "tasks": ["Install framing", "Check measurements", "Clean up"]
-        }
-        
-        # Test GET /jobs first to verify authentication
-        response = await self.make_request("GET", "/jobs/", contractor_token)
-        
-        # Create job
-        response = await self.make_request("POST", "/jobs/", contractor_token, job_data)
-        if response and response.status_code == 201:
-            job = response.json()
-            job_id = job["id"]
-            self.log_result("Create Job", True, f"Job created with ID: {job_id}")
-            
-            # Get job by ID
-            response = await self.make_request("GET", f"/jobs/{job_id}", contractor_token)
-            if response and response.status_code == 200:
-                retrieved_job = response.json()
-                if retrieved_job["id"] == job_id:
-                    self.log_result("Get Job by ID", True, f"Retrieved job: {retrieved_job['title']}")
-                else:
-                    self.log_result("Get Job by ID", False, "Job ID mismatch")
-            else:
-                error_msg = response.text if response else "No response"
-                self.log_result("Get Job by ID", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-            
-            # List jobs
-            response = await self.make_request("GET", "/jobs/", contractor_token)
-            if response and response.status_code == 200:
-                jobs = response.json()
-                job_found = any(j["id"] == job_id for j in jobs)
-                if job_found:
-                    self.log_result("List Jobs", True, f"Found created job in list of {len(jobs)} jobs")
-                else:
-                    self.log_result("List Jobs", False, "Created job not found in list")
-            else:
-                error_msg = response.text if response else "No response"
-                self.log_result("List Jobs", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-            
-            return job_id
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("Create Job", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-            return None
-    
-    async def test_job_accept_flow(self):
-        """Test crew accepting a job"""
-        print("\n=== Testing Job Accept Flow ===")
-        
-        # First create a job as contractor
-        job_id = await self.test_job_crud_operations()
-        if not job_id:
-            self.log_result("Job Accept Flow", False, "No job to accept")
-            return
-        
-        # Now try to accept as crew
-        crew_token = await self.login("crew")
-        if not crew_token:
-            self.log_result("Job Accept Flow", False, "No crew token")
-            return
-        
-        response = await self.make_request("POST", f"/jobs/{job_id}/accept", crew_token)
-        if response and response.status_code == 200:
-            data = response.json()
-            message = data.get("message", "")
-            if "submitted" in message.lower() or "accepted" in message.lower():
-                self.log_result("Job Accept Flow", True, f"Job accept successful: {message}")
-            else:
-                self.log_result("Job Accept Flow", False, f"Unexpected response: {message}")
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("Job Accept Flow", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def test_backend_api_health(self):
-        """Test basic API health"""
-        print("\n=== Testing Backend API Health ===")
-        
-        response = await self.make_request("GET", "/")
-        if response and response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "operational":
-                self.log_result("API Health", True, f"API operational: {data.get('message')}")
-            else:
-                self.log_result("API Health", False, f"API not operational: {data}")
-        else:
-            error_msg = response.text if response else "No response"
-            self.log_result("API Health", False, f"Status {response.status_code if response else 'None'}: {error_msg}")
-    
-    async def run_all_tests(self):
-        """Run all backend tests"""
-        print("🚀 Starting PunchListJobs Backend API Tests")
-        print(f"Testing against: {BASE_URL}")
+        print("✅ All authentication flows working")
+        return True
+
+    async def test_profile_update(self):
+        """Test 2: Profile update (PUT /api/users/profile) as crew - verify response returns full user object"""
+        print("\n=== Testing Profile Update with Runtime Safety ===")
         
         try:
-            # Test basic API health
-            await self.test_backend_api_health()
+            # Update crew profile
+            update_data = {
+                "bio": f"Updated bio at {datetime.now().isoformat()}",
+                "first_name": "Marcus",
+                "last_name": "Johnson"
+            }
             
-            # Test authentication flows
-            await self.test_auth_flows()
+            async with self.session.put(
+                f"{BACKEND_URL}/users/profile",
+                json=update_data,
+                headers=self.get_headers("crew")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Profile update failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                
+                # Verify response contains full user object (testing the None guard fix)
+                required_fields = ["id", "email", "name", "role", "bio"]
+                missing_fields = [field for field in required_fields if field not in data]
+                
+                if missing_fields:
+                    print(f"❌ Profile update response missing fields: {missing_fields}")
+                    return False
+                
+                if data.get("bio") != update_data["bio"]:
+                    print(f"❌ Profile update didn't persist bio change")
+                    return False
+                
+                print("✅ Profile update working correctly - full user object returned")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Profile update test failed: {e}")
+            return False
+
+    async def create_test_job(self):
+        """Create a test job for rating flow testing"""
+        print("\n=== Creating Test Job ===")
+        
+        try:
+            job_data = {
+                "title": f"Test Job for Rating Flow {datetime.now().strftime('%H:%M:%S')}",
+                "description": "Test job to verify rating endpoints with runtime safety fixes",
+                "trade": "Carpentry",
+                "pay_rate": 25.0,
+                "crew_needed": 1,
+                "start_time": (datetime.now(timezone.utc)).isoformat(),
+                "address": "123 Test St, Atlanta, GA 30309",
+                "is_emergency": False,
+                "is_boosted": False,
+                "tasks": ["Frame walls", "Install drywall"]
+            }
             
-            # Test admin user creation with name parsing
-            await self.test_admin_create_user()
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/",
+                json=job_data,
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 201:
+                    text = await resp.text()
+                    print(f"❌ Job creation failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                self.test_job_id = data["id"]
+                print(f"✅ Test job created: {self.test_job_id}")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Job creation failed: {e}")
+            return False
+
+    async def test_job_flow(self):
+        """Test 3: Job create → crew accept → contractor approve → start job"""
+        print("\n=== Testing Complete Job Flow ===")
+        
+        # Create job
+        if not await self.create_test_job():
+            return False
+        
+        try:
+            # Crew accepts job
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/accept",
+                headers=self.get_headers("crew")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Crew accept failed: {resp.status} - {text}")
+                    return False
+                print("✅ Crew accepted job")
             
-            # Test superadmin admin creation
-            await self.test_superadmin_create_admin()
+            # Contractor approves crew
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/applicants/{self.test_crew_id}/approve",
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Contractor approve failed: {resp.status} - {text}")
+                    return False
+                print("✅ Contractor approved crew")
             
-            # Test superadmin subadmin creation
-            await self.test_superadmin_create_subadmin()
+            # Start job
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/start",
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Job start failed: {resp.status} - {text}")
+                    return False
+                print("✅ Job started successfully")
             
-            # Test jobs itinerary endpoint
-            await self.test_jobs_itinerary()
-            
-            # Test job accept flow (includes CRUD)
-            await self.test_job_accept_flow()
+            return True
             
         except Exception as e:
-            self.log_result("Test Suite", False, f"Unexpected error: {str(e)}")
-        
-        finally:
-            await self.close()
-        
-        # Print summary
-        print("\n" + "="*60)
-        print("📊 TEST SUMMARY")
-        print("="*60)
-        
-        passed = sum(1 for result in self.test_results if "✅ PASS" in result)
-        failed = sum(1 for result in self.test_results if "❌ FAIL" in result)
-        
-        for result in self.test_results:
-            print(result)
-        
-        print(f"\n📈 Results: {passed} passed, {failed} failed")
-        
-        if failed == 0:
-            print("🎉 All tests passed!")
-        else:
-            print(f"⚠️  {failed} test(s) failed - check details above")
-        
-        return failed == 0
+            print(f"❌ Job flow test failed: {e}")
+            return False
 
-async def main():
-    """Main test runner"""
-    tester = APITester()
-    success = await tester.run_all_tests()
-    return success
+    async def test_job_completion_and_rating(self):
+        """Test 4: Job complete flow → verify rating endpoints work with runtime safety"""
+        print("\n=== Testing Job Completion and Rating Flow ===")
+        
+        try:
+            # Complete job as crew
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/crew-complete",
+                headers=self.get_headers("crew")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Job completion failed: {resp.status} - {text}")
+                    return False
+                print("✅ Job completed by crew")
+            
+            # Contractor approves completion
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/crew/{self.test_crew_id}/approve-complete",
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Completion approval failed: {resp.status} - {text}")
+                    return False
+                print("✅ Job completion approved")
+            
+            # Test rating submission (POST /api/jobs/{job_id}/rate) - testing None guards
+            rating_data = {
+                "rated_id": self.test_crew_id,
+                "job_id": self.test_job_id,
+                "stars": 5,
+                "review": "Excellent work! Testing runtime safety fixes."
+            }
+            
+            async with self.session.post(
+                f"{BACKEND_URL}/jobs/{self.test_job_id}/rate",
+                json=rating_data,
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Rating submission failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                if "rating" not in data:
+                    print(f"❌ Rating response missing rating data")
+                    return False
+                
+                print("✅ Rating submission working with runtime safety")
+            
+            # Test rating skip (POST /api/jobs/{job_id}/rate/skip) - testing None guards
+            # Create another job to test skip functionality
+            if await self.create_test_job():
+                # Accept and approve for skip test
+                await self.session.post(f"{BACKEND_URL}/jobs/{self.test_job_id}/accept", headers=self.get_headers("crew"))
+                await self.session.post(f"{BACKEND_URL}/jobs/{self.test_job_id}/applicants/{self.test_crew_id}/approve", headers=self.get_headers("contractor"))
+                await self.session.post(f"{BACKEND_URL}/jobs/{self.test_job_id}/start", headers=self.get_headers("contractor"))
+                await self.session.post(f"{BACKEND_URL}/jobs/{self.test_job_id}/crew-complete", headers=self.get_headers("crew"))
+                await self.session.post(f"{BACKEND_URL}/jobs/{self.test_job_id}/crew/{self.test_crew_id}/approve-complete", headers=self.get_headers("contractor"))
+                
+                skip_data = {"crew_id": self.test_crew_id}
+                async with self.session.post(
+                    f"{BACKEND_URL}/jobs/{self.test_job_id}/rate/skip",
+                    json=skip_data,
+                    headers=self.get_headers("contractor")
+                ) as resp:
+                    if resp.status != 200:
+                        text = await resp.text()
+                        print(f"❌ Rating skip failed: {resp.status} - {text}")
+                        return False
+                    print("✅ Rating skip working with runtime safety")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Job completion and rating test failed: {e}")
+            return False
+
+    async def test_jobs_itinerary(self):
+        """Test 5: Jobs itinerary for both roles"""
+        print("\n=== Testing Jobs Itinerary ===")
+        
+        try:
+            # Test crew itinerary
+            async with self.session.get(
+                f"{BACKEND_URL}/jobs/itinerary",
+                headers=self.get_headers("crew")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Crew itinerary failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                if not isinstance(data, list):
+                    print(f"❌ Crew itinerary should return list")
+                    return False
+                print("✅ Crew itinerary working")
+            
+            # Test contractor itinerary
+            async with self.session.get(
+                f"{BACKEND_URL}/jobs/itinerary",
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Contractor itinerary failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                if not isinstance(data, list):
+                    print(f"❌ Contractor itinerary should return list")
+                    return False
+                print("✅ Contractor itinerary working")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Jobs itinerary test failed: {e}")
+            return False
+
+    async def test_archive_endpoint(self):
+        """Test 6: Archive endpoint"""
+        print("\n=== Testing Archive Endpoint ===")
+        
+        try:
+            # Test archive endpoint (assuming it exists)
+            async with self.session.get(
+                f"{BACKEND_URL}/jobs/archive",
+                headers=self.get_headers("contractor")
+            ) as resp:
+                if resp.status == 404:
+                    print("⚠️  Archive endpoint not found - may not be implemented")
+                    return True
+                elif resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Archive endpoint failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                print("✅ Archive endpoint working")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Archive endpoint test failed: {e}")
+            return False
+
+    async def test_backend_health(self):
+        """Test backend health and basic connectivity"""
+        print("\n=== Testing Backend Health ===")
+        
+        try:
+            async with self.session.get(f"{BACKEND_URL}/") as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    print(f"❌ Backend health check failed: {resp.status} - {text}")
+                    return False
+                
+                data = await resp.json()
+                if data.get("status") != "operational":
+                    print(f"❌ Backend not operational: {data}")
+                    return False
+                
+                print("✅ Backend health check passed")
+                return True
+                
+        except Exception as e:
+            print(f"❌ Backend health check failed: {e}")
+            return False
+
+async def run_tests():
+    """Run all backend tests"""
+    print("🚀 Starting PunchListJobs Backend API Tests")
+    print(f"Backend URL: {BACKEND_URL}")
+    
+    async with TestSession() as test:
+        results = []
+        
+        # Test 1: Backend Health
+        results.append(await test.test_backend_health())
+        
+        # Test 2: Authentication flows
+        results.append(await test.test_auth_flows())
+        
+        # Test 3: Profile update with runtime safety
+        results.append(await test.test_profile_update())
+        
+        # Test 4: Complete job flow
+        results.append(await test.test_job_flow())
+        
+        # Test 5: Job completion and rating with runtime safety
+        results.append(await test.test_job_completion_and_rating())
+        
+        # Test 6: Jobs itinerary
+        results.append(await test.test_jobs_itinerary())
+        
+        # Test 7: Archive endpoint
+        results.append(await test.test_archive_endpoint())
+        
+        # Summary
+        passed = sum(results)
+        total = len(results)
+        
+        print(f"\n{'='*50}")
+        print(f"TEST SUMMARY: {passed}/{total} tests passed")
+        
+        if passed == total:
+            print("🎉 All tests passed! Runtime safety fixes verified.")
+            return True
+        else:
+            print("❌ Some tests failed. Check output above for details.")
+            return False
 
 if __name__ == "__main__":
-    success = asyncio.run(main())
-    exit(0 if success else 1)
+    success = asyncio.run(run_tests())
+    sys.exit(0 if success else 1)

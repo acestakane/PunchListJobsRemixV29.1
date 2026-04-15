@@ -6,7 +6,7 @@ import Navbar from "../components/Navbar";
 import axios from "axios";
 import { toast } from "sonner";
 import { getErr } from "../utils/errorUtils";
-import { CalendarDays, Search, ChevronRight, Loader2 } from "lucide-react";
+import { CalendarDays, Search, ChevronRight, Loader2, Inbox } from "lucide-react";
 import { ItineraryCard, EmptyPane, fmtDate, fmtTime, downloadCalendar, openDirections } from "../components/itinerary/ItineraryCard";
 import { ItineraryRatingModal } from "../components/itinerary/ItineraryRatingModal";
 import { DisputeModal } from "../components/itinerary/DisputeModal";
@@ -46,7 +46,22 @@ export default function JobsItinerary() {
     }
   }, []);
 
-  useEffect(() => { fetchItinerary(); }, [fetchItinerary]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const { data } = await axios.get(`${API}/jobs/itinerary`);
+        if (!cancelled) setJobs(data);
+      } catch (e) {
+        if (!cancelled) toast.error("Failed to load itinerary");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Real-time: auto-trigger rating prompt when a job completes ──────────────
   useEffect(() => {

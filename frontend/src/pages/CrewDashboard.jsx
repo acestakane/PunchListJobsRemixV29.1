@@ -130,7 +130,7 @@ export default function CrewDashboard() {
       if (msg.type === "job_completed_final") {
         const text = `"${msg.job_title}" is now complete! Head to Itinerary to rate the contractor.`;
         toast.success(text, {
-          action: { label: "Rate Now", onClick: () => navigate("/itinerary") },
+          action: { label: "Rate Now", onClick: () => navigate("/jobs-itinerary") },
           duration: 8000,
         });
         fetchMyJobs();
@@ -305,7 +305,7 @@ export default function CrewDashboard() {
   };
 
   const shareJob = async (job) => {
-    const shareUrl = `${window.location.origin}/api/j/${job.id}`;
+    const shareUrl = `${window.location.origin}/j/${job.id}`;
     const shareText = `${job.title} — $${job.pay_rate}/hr in ${job.location?.city || "your area"}`;
     if (navigator.share) {
       try { await navigator.share({ title: job.title, text: shareText, url: shareUrl }); } catch (e) { console.debug("Share cancelled or failed:", e); }

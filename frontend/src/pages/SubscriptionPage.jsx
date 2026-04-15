@@ -43,7 +43,30 @@ export default function SubscriptionPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const [plansRes, statusRes, txRes, userRes] = await Promise.all([
+          axios.get(`${API}/payments/plans`),
+          axios.get(`${API}/payments/subscription/status`),
+          axios.get(`${API}/payments/transactions`),
+          axios.get(`${API}/users/me`),
+        ]);
+        if (!cancelled) {
+          setPlans(plansRes.data);
+          setSubStatus(statusRes.data);
+          setTransactions(txRes.data);
+          setUser(userRes.data);
+        }
+      } catch (e) {
+        if (!cancelled) toast.error("Failed to load subscription data");
+      }
+      if (!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleSquarePayment = async (token) => {
     if (!selectedPlan) return;

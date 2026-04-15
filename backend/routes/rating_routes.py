@@ -96,10 +96,11 @@ async def rate_user(job_id: str, data: RatingCreate, current_user: dict = Depend
 
     # AUTO-MOVE: if every approved crew member is now rated or skipped → "past"
     updated_job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
-    crew_accepted = updated_job.get("crew_accepted", [])
-    handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
-    if crew_accepted and all(c in handled for c in crew_accepted):
-        await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
+    if updated_job:
+        crew_accepted = updated_job.get("crew_accepted", [])
+        handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
+        if crew_accepted and all(c in handled for c in crew_accepted):
+            await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
 
     return {"message": "Rating submitted", "rating": {k: v for k, v in rating_doc.items() if k != "_id"}}
 
@@ -150,10 +151,11 @@ async def skip_rating(job_id: str, data: SkipRatingRequest, current_user: dict =
         await db.jobs.update_one({"id": job_id}, {"$addToSet": {"rated_by_crew": current_user["id"]}})
 
         updated_job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
-        crew_accepted = updated_job.get("crew_accepted", [])
-        handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
-        if crew_accepted and all(c in handled for c in crew_accepted):
-            await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
+        if updated_job:
+            crew_accepted = updated_job.get("crew_accepted", [])
+            handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
+            if crew_accepted and all(c in handled for c in crew_accepted):
+                await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
 
         return {"message": "Rating skipped", "contractor_id": contractor_id}
 
@@ -162,10 +164,11 @@ async def skip_rating(job_id: str, data: SkipRatingRequest, current_user: dict =
 
     # AUTO-MOVE for contractor skip
     updated_job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
-    crew_accepted = updated_job.get("crew_accepted", [])
-    handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
-    if crew_accepted and all(c in handled for c in crew_accepted):
-        await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
+    if updated_job:
+        crew_accepted = updated_job.get("crew_accepted", [])
+        handled = set(updated_job.get("rated_crew", [])) | set(updated_job.get("skipped_ratings", []))
+        if crew_accepted and all(c in handled for c in crew_accepted):
+            await db.jobs.update_one({"id": job_id}, {"$set": {"status": "past"}})
 
     return {"message": "Rating skipped", "crew_id": data.crew_id}
 

@@ -25,19 +25,23 @@ export default function ResolveIssue() {
   const [concerns, setConcerns] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function fetchConcerns() {
+  async function fetchConcerns(signal) {
     setLoading(true);
     try {
       const { data } = await axios.get(`${API}/concerns/mine`);
-      setConcerns(data);
+      if (!signal?.aborted) setConcerns(data);
     } catch {
-      toast.error("Failed to load concerns");
+      if (!signal?.aborted) toast.error("Failed to load concerns");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
-  useEffect(() => { fetchConcerns(); }, []);
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchConcerns(ac.signal);
+    return () => ac.abort();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-[#0d1117]">

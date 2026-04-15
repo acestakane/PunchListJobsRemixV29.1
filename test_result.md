@@ -217,22 +217,33 @@ frontend:
           agent: "main"
           comment: "Extracted ProfilePublicView to components/profile/ProfilePublicView.jsx. Reduced ProfilePage from 742 to 665 lines."
 
+  - task: "Runtime safety fixes verification"
+    implemented: true
+    working: true
+    file: "backend/routes/rating_routes.py, backend/routes/user_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Comprehensive testing of runtime safety fixes completed successfully. Verified None guards in rating_routes.py (lines 99, 154, 167) and user_routes.py (line 144). All authentication flows working for 4 roles. Profile update endpoint returns full user object after None guard fix. Complete job workflow tested: job creation → crew accept → contractor approve → job start → crew complete → contractor approve completion → rating submission/skip. All rating endpoints working with runtime safety guards. Jobs itinerary and archive endpoints functional."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 3
+  test_sequence: 4
   run_ui: false
 
 test_plan:
   current_focus:
-    - "AppSettingsPage secure storage"
-    - "ProfilePage component extraction"
+    - "Runtime safety fixes verification"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
     - agent: "main"
-      message: "Applied code review fixes: (1) notify.py logging, (2) MapHelpers/CrewDashboard error logging, (3) AppSettingsPage localStorage→sessionStorage, (4) admin_routes.py - extracted user_helpers.py with parse_name_fields/build_base_user_doc, (5) job_routes.py - extracted _ws_send helper replacing 12 try/except blocks + fixed redundant itinerary branch, (6) ProfilePage - extracted ProfilePublicView. All lint checks pass. Backend verified with API calls. Please test auth, admin create user, itinerary, and profile flows."
+      message: "Round 2: Full repo scan fixes — (1) JobsItinerary missing Inbox import, (2) CrewDashboard broken navigate('/itinerary') → '/jobs-itinerary', (3) CrewDashboard share URL /api/j/ → /j/, (4) ContractorDashboard share URL /jobs/ → /j/, (5) LandingPage footer /terms,/privacy → /pages/terms,/pages/privacy, (6) rating_routes.py 3x None guard on updated_job, (7) user_routes.py None guard on updated user, (8) Unmount guards added to 4 pages (JobsItinerary, SubscriptionPage, ResolveIssue, ArchivePage). All lint passes. Backend verified."
     - agent: "testing"
-      message: "Backend testing completed successfully. All 14 tests passed including: (1) Authentication flows for all 4 roles, (2) Admin user creation with name parsing, (3) SuperAdmin admin/subadmin creation, (4) Jobs itinerary endpoint, (5) Job CRUD operations, (6) Job accept flow. Fixed duplicate route decorator bug in job_routes.py. All refactored code working correctly. WebSocket helper extraction, name parsing helpers, and error logging improvements all verified."
+      message: "Runtime safety fixes testing completed successfully. All 7 test scenarios passed: (1) Backend health check, (2) Authentication flows for all 4 roles, (3) Profile update with None guard verification, (4) Complete job workflow, (5) Job completion and rating flow with runtime safety, (6) Jobs itinerary for both roles, (7) Archive endpoint. The None guards added to rating_routes.py (submit_rating and skip_rating functions) and user_routes.py (update_profile function) are working correctly and preventing potential runtime errors. All backend APIs tested are functioning properly."
