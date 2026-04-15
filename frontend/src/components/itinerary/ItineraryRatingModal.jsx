@@ -1,14 +1,23 @@
 import React, { useState } from "react";
-import { Star } from "lucide-react";
+import { Star, X } from "lucide-react";
 
-export function ItineraryRatingModal({ data, onSubmit, onSkip }) {
+export function ItineraryRatingModal({ data, onSubmit, onSkip, onClose }) {
   const [stars, setStars] = useState(0);
   const [review, setReview] = useState("");
 
   return (
     <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center px-4 pb-6 bg-black/50" data-testid="rating-modal">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 w-full max-w-md shadow-2xl">
-        <h3 className="font-bold text-[#050A30] dark:text-white mb-3 flex items-center gap-2">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 w-full max-w-md shadow-2xl relative">
+        {/* Exit button */}
+        <button
+          onClick={onClose || onSkip}
+          className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          data-testid="rating-close-btn"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <h3 className="font-bold text-[#050A30] dark:text-white mb-3 flex items-center gap-2 pr-8">
           <Star className="w-4 h-4 text-amber-500" /> Rate {data.ratedName}
         </h3>
         <div className="flex gap-2 mb-3">

@@ -229,21 +229,35 @@ frontend:
           agent: "testing"
           comment: "Comprehensive testing of runtime safety fixes completed successfully. Verified None guards in rating_routes.py (lines 99, 154, 167) and user_routes.py (line 144). All authentication flows working for 4 roles. Profile update endpoint returns full user object after None guard fix. Complete job workflow tested: job creation → crew accept → contractor approve → job start → crew complete → contractor approve completion → rating submission/skip. All rating endpoints working with runtime safety guards. Jobs itinerary and archive endpoints functional."
 
+  - task: "PunchListJobs rating flow fix verification"
+    implemented: true
+    working: true
+    file: "backend/utils/job_helpers.py, backend/routes/rating_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: "Comprehensive testing of the critical rating flow bug fix completed successfully. Verified that crew members can now rate contractors after job completion even when the job auto-moves to 'past' status. All 16 test scenarios passed including the complete job lifecycle: job creation → crew accept → contractor approve → job start → crew complete → contractor approve completion → contractor rates crew (job moves to 'past') → crew rates contractor (CRITICAL FIX) → validation tests. The fix in job_helpers.py RATING_VALID_STATUSES now correctly includes 'past' and 'completed_pending_review' statuses. Authentication flows, jobs itinerary, and rating validation all working correctly."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 4
+  test_sequence: 5
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Runtime safety fixes verification"
+    - "PunchListJobs rating flow fix verification"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
     - agent: "main"
-      message: "Round 2: Full repo scan fixes — (1) JobsItinerary missing Inbox import, (2) CrewDashboard broken navigate('/itinerary') → '/jobs-itinerary', (3) CrewDashboard share URL /api/j/ → /j/, (4) ContractorDashboard share URL /jobs/ → /j/, (5) LandingPage footer /terms,/privacy → /pages/terms,/pages/privacy, (6) rating_routes.py 3x None guard on updated_job, (7) user_routes.py None guard on updated user, (8) Unmount guards added to 4 pages (JobsItinerary, SubscriptionPage, ResolveIssue, ArchivePage). All lint passes. Backend verified."
+      message: "Fixed crew cannot rate contractor bug. Root cause: RATING_VALID_STATUSES in job_helpers.py only had (completed, cancelled, suspended) but auto-move changes job to 'past' after contractor rates. Added 'past' and 'completed_pending_review' to allowed statuses. Also added X close button to ItineraryRatingModal to break rating loop, and added error-based auto-close in submitRating/skipRating on non-retryable errors. End-to-end tested: job complete → contractor rates (→ past) → crew rates → ✅ 200."
     - agent: "testing"
       message: "Runtime safety fixes testing completed successfully. All 7 test scenarios passed: (1) Backend health check, (2) Authentication flows for all 4 roles, (3) Profile update with None guard verification, (4) Complete job workflow, (5) Job completion and rating flow with runtime safety, (6) Jobs itinerary for both roles, (7) Archive endpoint. The None guards added to rating_routes.py (submit_rating and skip_rating functions) and user_routes.py (update_profile function) are working correctly and preventing potential runtime errors. All backend APIs tested are functioning properly."
+    - agent: "testing"
+      message: "PunchListJobs rating flow fix testing completed successfully. Comprehensive test of the critical bug fix where crew members couldn't rate contractors after job completion. All 16 test scenarios passed: (1) Contractor authentication, (2) Crew authentication, (3) Job creation, (4) Crew job acceptance, (5) Contractor approves crew, (6) Job start, (7) Crew completion submission, (8) Contractor approves completion, (9) Job status verification (completed), (10) Contractor rates crew, (11) Job auto-move to 'past' status, (12) CRITICAL: Crew rates contractor on 'past' status job, (13) Crew skip rating validation, (14) Contractor jobs itinerary, (15) Crew jobs itinerary, (16) Rating blocked on 'open' status. The fix in job_helpers.py RATING_VALID_STATUSES now correctly includes 'past' and 'completed_pending_review' statuses, allowing crew members to rate contractors even after the job auto-moves to 'past' status. The complete job lifecycle with rating flow is working perfectly."

@@ -265,7 +265,17 @@ export default function JobsItinerary() {
       toast.success("Rating submitted!");
       setRatingData(null);
       fetchItinerary(); // persist state — hides button on re-render
-    } catch (e) { toast.error(getErr(e, "Failed to submit rating")); }
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "";
+      // Close modal on non-retryable errors to break the loop
+      if (/already rated|already handled|disabled|not part/i.test(msg)) {
+        toast.info(msg);
+        setRatingData(null);
+        fetchItinerary();
+      } else {
+        toast.error(getErr(e, "Failed to submit rating"));
+      }
+    }
   };
 
   const skipRating = async () => {
@@ -277,7 +287,16 @@ export default function JobsItinerary() {
       toast.success("Rating skipped");
       setRatingData(null);
       fetchItinerary(); // persist state — hides button on re-render
-    } catch (e) { toast.error(getErr(e, "Failed to skip rating")); }
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "";
+      if (/already rated|already handled|already skipped|disabled|not part/i.test(msg)) {
+        toast.info(msg);
+        setRatingData(null);
+        fetchItinerary();
+      } else {
+        toast.error(getErr(e, "Failed to skip rating"));
+      }
+    }
   };
 
   return (

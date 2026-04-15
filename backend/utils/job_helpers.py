@@ -13,7 +13,7 @@ STARS_MIN = 1
 STARS_MAX = 5
 
 # Statuses that allow rating / skip-rating actions (HARD GATE — spec §6)
-RATING_VALID_STATUSES = ("completed", "cancelled", "suspended")
+RATING_VALID_STATUSES = ("completed", "completed_pending_review", "past", "cancelled", "suspended")
 
 # Statuses from which a job can be cancelled
 CANCELLABLE_STATUSES = ("open", "fulfilled", "suspended", "in_progress", "pending_complete")
