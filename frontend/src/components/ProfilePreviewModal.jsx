@@ -213,14 +213,14 @@ export function ProfilePreviewModal({ userId, onClose }) {
             <div>
               <h4 className="font-bold text-sm text-[#050A30] dark:text-white mb-3">Recent Reviews</h4>
               <div className="space-y-3">
-                {profile.recent_ratings.slice(0, 3).map((rating, idx) => (
-                  <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                {profile.recent_ratings.slice(0, 3).map((rating) => (
+                  <div key={rating.id || rating.created_at} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="flex">
-                        {[...Array(5)].map((_, i) => (
+                        {[1,2,3,4,5].map((star) => (
                           <Star 
-                            key={i} 
-                            className={`w-3.5 h-3.5 ${i < rating.stars ? 'text-amber-400 fill-current' : 'text-slate-300'}`}
+                            key={star} 
+                            className={`w-3.5 h-3.5 ${star <= rating.stars ? 'text-amber-400 fill-current' : 'text-slate-300'}`}
                           />
                         ))}
                       </div>

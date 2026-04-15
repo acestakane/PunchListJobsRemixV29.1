@@ -36,8 +36,9 @@ export default function SubscriptionPage() {
       setSubStatus(statusRes.data);
       setTransactions(txRes.data);
       setUser(userRes.data);
-    } catch {
+    } catch (e) {
       toast.error("Failed to load subscription data");
+      console.warn("SubscriptionPage fetchData error:", e);
     }
     setLoading(false);
   }, []);

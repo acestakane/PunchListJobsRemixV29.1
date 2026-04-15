@@ -38,8 +38,9 @@ export default function JobsItinerary() {
       setLoading(true);
       const { data } = await axios.get(`${API}/jobs/itinerary`);
       setJobs(data);
-    } catch {
+    } catch (e) {
       toast.error("Failed to load itinerary");
+      console.warn("JobsItinerary fetchItinerary error:", e);
     } finally {
       setLoading(false);
     }

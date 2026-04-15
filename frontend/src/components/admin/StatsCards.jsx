@@ -46,7 +46,7 @@ export default function StatsCards({ statCards, metricsCards, analytics, pieData
               <Pie data={pieData} cx="50%" cy="50%" outerRadius={70} dataKey="value"
                 label={({ name, value }) => value > 0 ? `${name}: ${value}` : ""}
                 labelLine={false}>
-                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                {pieData.map((entry, i) => <Cell key={entry.name || i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={{ background: "#0F172A", border: "1px solid #1E293B", borderRadius: 8, color: "#fff" }} />
             </PieChart>

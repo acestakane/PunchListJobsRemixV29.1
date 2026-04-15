@@ -406,7 +406,7 @@ export default function CrewDashboard() {
                   </div>
                 )}
                 {loading ? (
-                  Array(3).fill(0).map((_, i) => <div key={i} className="card p-4 animate-pulse h-32 bg-slate-200 dark:bg-slate-800" />)
+                  Array(3).fill(0).map((_, i) => <div key={`skeleton-${i}`} className="card p-4 animate-pulse h-32 bg-slate-200 dark:bg-slate-800" />)
                 ) : jobs.length === 0 ? (
                   <div className="card p-10 text-center">
                     <MapPin className="w-10 h-10 text-slate-300 mx-auto mb-3" />
