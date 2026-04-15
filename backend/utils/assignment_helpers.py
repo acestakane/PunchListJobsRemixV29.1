@@ -178,6 +178,8 @@ async def maybe_complete_job(job_id: str, actor_id: str = "system") -> bool:
                 "type": "job_completed_final",
                 "job_id": job_id,
                 "job_title": job.get("title", ""),
+                "contractor_id": job.get("contractor_id", ""),
+                "contractor_name": job.get("contractor_name", ""),
             })
         except Exception:
             pass

@@ -1,6 +1,5 @@
 import uuid
 import secrets
-import string
 import os
 import httpx
 from datetime import datetime, timezone, timedelta
@@ -11,6 +10,7 @@ from auth import hash_password, verify_password, create_token, user_to_response,
 from utils.email_utils import send_welcome_email
 from utils.activity_log import log_activity
 from utils.notify import create_notification
+from utils.auth_helpers import resolve_full_name, generate_referral_code, build_user_doc
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ RECAPTCHA_SECRET = os.environ.get("RECAPTCHA_SECRET_KEY", "")
 async def verify_captcha(token: str | None):
     """Verify reCAPTCHA token with Google. Skip if no secret configured."""
     if not RECAPTCHA_SECRET or not token:
-        return  # skip verification if not configured
+        return
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             "https://www.google.com/recaptcha/api/siteverify",
@@ -31,29 +31,37 @@ async def verify_captcha(token: str | None):
             raise HTTPException(status_code=400, detail="CAPTCHA verification failed")
 
 
-def generate_referral_code(length: int = 8) -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
+async def _process_referral(user_doc: dict, referral_code_used: str, now: str) -> None:
+    """Award points and log referral when a valid referral code is used."""
+    referrer = await db.users.find_one({"referral_code": referral_code_used})
+    if not referrer:
+        return
+    user_doc["referred_by"] = referrer["id"]
+    await db.users.update_one({"id": referrer["id"]}, {"$inc": {"points": 100}})
+    await create_notification(
+        referrer["id"], "referral_bonus", "Referral Bonus +100 pts",
+        "You earned 100 points! Someone signed up using your referral code.",
+    )
+    await db.referrals.insert_one({
+        "id": str(uuid.uuid4()),
+        "referrer_id": referrer["id"],
+        "referred_id": user_doc["id"],
+        "points_awarded": 100,
+        "created_at": now,
+    })
 
 
 @router.post("/register", status_code=201)
 async def register(data: UserCreate):
     await verify_captcha(data.captcha_token)
+
     existing = await db.users.find_one({"email": data.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-
     if data.role not in ("crew", "contractor"):
         raise HTTPException(status_code=400, detail="Role must be crew or contractor")
 
-    # Derive full name from first_name/last_name or fall back to name field
-    first_name = (data.first_name or "").strip()
-    last_name = (data.last_name or "").strip()
-    if first_name or last_name:
-        full_name = f"{first_name} {last_name}".strip()
-    else:
-        full_name = (data.name or "").strip()
-
+    full_name = resolve_full_name(data)
     if not full_name:
         raise HTTPException(status_code=400, detail="Name is required")
 
@@ -62,69 +70,19 @@ async def register(data: UserCreate):
         code = generate_referral_code()
 
     now = datetime.now(timezone.utc).isoformat()
-
-    user_doc = {
-        "id": str(uuid.uuid4()),
-        "email": data.email.lower(),
-        "password_hash": hash_password(data.password),
-        "role": data.role,
-        "name": full_name,
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": data.phone,
-        "is_active": True,
-        "is_verified": False,
-        "created_at": now,
-        "subscription_status": "free",
-        "subscription_plan": None,
-        "subscription_end": None,
-        "usage_month": datetime.now(timezone.utc).strftime("%Y-%m"),
-        "usage_count": 0,
-        "points": 50,
-        "referral_code": code,
-        "referred_by": None,
-        "bio": data.bio or "",
-        "trade": data.trade or "",
-        "address": data.address or "",
-        "skills": [],
-        "profile_photo": None,
-        "availability": True,
-        "is_online": False,
-        "location": None,
-        "rating": 0.0,
-        "rating_count": 0,
-        "jobs_completed": 0,
-        "company_name": data.company_name or "",
-        "logo": None,
-        "hide_location": False,
-        "favorite_crew": [],
-    }
+    user_doc = build_user_doc(data, full_name, code, now)
+    user_doc["password_hash"] = hash_password(data.password)
 
     if data.referral_code_used:
-        referrer = await db.users.find_one({"referral_code": data.referral_code_used})
-        if referrer:
-            user_doc["referred_by"] = referrer["id"]
-            await db.users.update_one(
-                {"id": referrer["id"]},
-                {"$inc": {"points": 100}}
-            )
-            await create_notification(
-                referrer["id"], "referral_bonus", "Referral Bonus +100 pts",
-                "You earned 100 points! Someone signed up using your referral code."
-            )
-            await db.referrals.insert_one({
-                "id": str(uuid.uuid4()),
-                "referrer_id": referrer["id"],
-                "referred_id": user_doc["id"],
-                "points_awarded": 100,
-                "created_at": now
-            })
+        await _process_referral(user_doc, data.referral_code_used, now)
 
     await db.users.insert_one(user_doc)
     token = create_token({"sub": user_doc["id"], "role": user_doc["role"]})
     await send_welcome_email(full_name, data.email, data.role)
-    await log_activity(actor=user_to_response(user_doc), action="auth.register", category="auth",
-                       details={"role": data.role, "email": data.email})
+    await log_activity(
+        actor=user_to_response(user_doc), action="auth.register", category="auth",
+        details={"role": data.role, "email": data.email},
+    )
     return {"access_token": token, "token_type": "bearer", "user": user_to_response(user_doc)}
 
 

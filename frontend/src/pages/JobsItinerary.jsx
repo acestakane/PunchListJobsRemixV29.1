@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useWebSocket } from "../contexts/WebSocketContext";
 import Navbar from "../components/Navbar";
 import axios from "axios";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export default function JobsItinerary() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { addListener } = useWebSocket();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState(null);
@@ -25,6 +27,7 @@ export default function JobsItinerary() {
   const [disputeJobId, setDisputeJobId] = useState(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [ratingData, setRatingData] = useState(null); // {jobId, ratedId, ratedName}
+  const [crewCompleteLoading, setCrewCompleteLoading] = useState(false);
 
   const role = user?.role;
   const isContractor = ["contractor", "admin", "superadmin"].includes(role);
@@ -43,6 +46,29 @@ export default function JobsItinerary() {
   }, []);
 
   useEffect(() => { fetchItinerary(); }, [fetchItinerary]);
+
+  // ── Real-time: auto-trigger rating prompt when a job completes ──────────────
+  useEffect(() => {
+    return addListener((msg) => {
+      if (msg.type === "job_completed_final") {
+        // Refresh the list so the newly-completed job shows up
+        fetchItinerary();
+        // If viewer is crew, prompt them to rate the contractor
+        if (isCrew && msg.contractor_id) {
+          setRatingData({
+            jobId: msg.job_id,
+            ratedId: msg.contractor_id,
+            ratedName: msg.contractor_name || "Contractor",
+          });
+        }
+        toast.success(`"${msg.job_title}" marked complete!`);
+      }
+      if (msg.type === "completion_approved") {
+        fetchItinerary();
+        toast.success(`Completion approved for "${msg.job_title}"`);
+      }
+    });
+  }, [addListener, fetchItinerary, isCrew]);
 
   const now = new Date();
 
@@ -168,8 +194,6 @@ export default function JobsItinerary() {
       }));
     } catch { toast.error("Failed to update task"); }
   };
-
-  const [crewCompleteLoading, setCrewCompleteLoading] = useState(false);
 
   const handleCrewComplete = async () => {
     if (!selectedJob || crewCompleteLoading) return;

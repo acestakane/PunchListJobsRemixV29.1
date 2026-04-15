@@ -3,18 +3,18 @@ import { getErr } from "../utils/errorUtils";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useWebSocket } from "../contexts/WebSocketContext";
-import TradeSelect from "../components/TradeSelect";
 import Navbar from "../components/Navbar";
 import JobMap from "../components/JobMap";
 import JobCard from "../components/JobCard";
 import { JobDetailModal } from "../components/crew/JobDetailModal";
 import { CrewSidebar } from "../components/crew/CrewSidebar";
+import { CrewDashboardHeader } from "../components/crew/CrewDashboardHeader";
+import { SubscriptionBanners } from "../components/crew/SubscriptionBanners";
+import { JobFiltersRow } from "../components/crew/JobFiltersRow";
 import { ProfileCompletionPopup } from "../components/ProfileCompletionPopup";
 import { toast } from "sonner";
 import axios from "axios";
-import {
-  MapPin, List, Zap, Clock, AlertCircle, Navigation, ToggleLeft, ToggleRight, RefreshCw,
-} from "lucide-react";
+import { MapPin, Zap } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const REVEAL_CONTACT_PRICE = 2.99;
@@ -127,6 +127,14 @@ export default function CrewDashboard() {
   // WebSocket: new job notifications + crew requests + job workflow
   useEffect(() => {
     const remove = addListener((msg) => {
+      if (msg.type === "job_completed_final") {
+        const text = `"${msg.job_title}" is now complete! Head to Itinerary to rate the contractor.`;
+        toast.success(text, {
+          action: { label: "Rate Now", onClick: () => navigate("/itinerary") },
+          duration: 8000,
+        });
+        fetchMyJobs();
+      }
       if (msg.type === "new_job") {
         setJobs(prev => [msg.job, ...prev.filter(j => j.id !== msg.job.id)]);
         const prefix = msg.job.is_emergency ? "EMERGENCY: " : "New job: ";
@@ -325,84 +333,22 @@ export default function CrewDashboard() {
       <Navbar />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        {/* Subscription Expired Banner */}
-        {isExpired && (
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl p-3 mb-4 flex items-center gap-3" data-testid="subscription-expired-banner">
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-bold text-red-700 dark:text-red-300">Subscription Expired</p>
-              <p className="text-xs text-red-600 dark:text-red-400">Renew to accept jobs and appear on the map</p>
-            </div>
-            <a href="/subscription" className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors" data-testid="renew-subscription-btn">
-              Renew Now
-            </a>
-          </div>
-        )}
+        {/* Subscription banners */}
+        <SubscriptionBanners isExpired={isExpired} subStatus={subStatus} />
 
-        {/* Free plan usage warning */}
-        {subStatus?.status === "free" && subStatus.usage_remaining <= 1 && (
-          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 rounded-xl p-3 mb-4 flex items-center gap-3">
-            <Clock className="w-5 h-5 text-amber-500 flex-shrink-0" />
-            <p className="text-sm text-amber-700 dark:text-amber-300">
-              {subStatus.usage_remaining === 0
-                ? <>Free plan limit reached. <a href="/subscription" className="ml-1 underline font-semibold">Upgrade to respond to more jobs.</a></>
-                : <><strong>{subStatus.usage_remaining} response</strong> remaining this month. <a href="/subscription" className="ml-1 underline font-semibold">Upgrade for unlimited.</a></>
-              }
-            </p>
-          </div>
-        )}
-
-        {/* Header Row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <h1 className="text-2xl font-extrabold text-[#050A30] dark:text-white" style={{ fontFamily: "Manrope, sans-serif" }}>
-              {user?.name?.split(" ")[0]}'s Dashboard
-            </h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs font-semibold px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full capitalize" data-testid="user-role-badge">
-                Crew Member
-              </span>
-              <span className="text-slate-400 text-xs">·</span>
-              <p className="text-sm text-slate-500 flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-red-400"}`} />
-                {connected ? "Live updates active" : "Connecting..."}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={toggleOnlineStatus}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border-2 transition-all ${isOnline ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500"}`}
-              data-testid="online-status-toggle">
-              {isOnline ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
-              {isOnline ? "Online" : "Offline"}
-            </button>
-            <button onClick={toggleLocation}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border-2 transition-all ${locationEnabled ? "bg-blue-600 border-blue-600 text-white" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500"}`}
-              data-testid="location-toggle">
-              <Navigation className="w-4 h-4" />
-              {locationEnabled ? "LIVE ON MAP" : "Enable Location"}
-            </button>
-            <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-1">
-              <button onClick={() => setView("map")}
-                className={`px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-1 transition-colors ${view === "map" ? "bg-[#0000FF] text-white" : "text-slate-500"}`}
-                data-testid="view-map-btn">
-                <MapPin className="w-4 h-4" /> Map
-              </button>
-              <button onClick={() => setView("list")}
-                className={`px-3 py-1.5 rounded text-sm font-semibold flex items-center gap-1 transition-colors ${view === "list" ? "bg-[#0000FF] text-white" : "text-slate-500"}`}
-                data-testid="view-list-btn">
-                <List className="w-4 h-4" /> List
-              </button>
-            </div>
-            <button onClick={() => setSmartMatch(!smartMatch)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold border transition-colors ${smartMatch ? "border-transparent text-[#050A30]" : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-[#0000FF]"}`}
-              style={smartMatch ? { backgroundColor: "var(--theme-accent)" } : {}}
-              data-testid="smart-match-btn">
-              <Zap className="w-4 h-4" /> Smart Match
-            </button>
-          </div>
-        </div>
+        {/* Header row */}
+        <CrewDashboardHeader
+          user={user}
+          connected={connected}
+          isOnline={isOnline}
+          locationEnabled={locationEnabled}
+          view={view}
+          smartMatch={smartMatch}
+          onToggleOnline={toggleOnlineStatus}
+          onToggleLocation={toggleLocation}
+          onViewChange={setView}
+          onToggleSmartMatch={() => setSmartMatch(!smartMatch)}
+        />
 
         {/* Smart Match Banner */}
         {smartMatch && (
@@ -414,22 +360,15 @@ export default function CrewDashboard() {
           </div>
         )}
 
-        {/* Filters Row */}
-        <div className="flex flex-wrap gap-2 mb-4 items-center">
-          <div className="flex-1 min-w-[180px] max-w-xs">
-            <TradeSelect grouped={grouped} value={tradeFilter} onChange={setTradeFilter} placeholder="All Trades" data-testid="filter-trade-select" />
-          </div>
-          <select value={radius} onChange={e => setRadius(Number(e.target.value))}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-            data-testid="radius-select">
-            {[10, 25, 50, 100].map(r => <option key={r} value={r}>{r} mi</option>)}
-          </select>
-          <button onClick={fetchJobs}
-            className="px-3 py-1.5 rounded-full text-xs font-semibold border bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 flex items-center gap-1"
-            data-testid="refresh-btn">
-            <RefreshCw className="w-3 h-3" /> Refresh
-          </button>
-        </div>
+        {/* Filters row */}
+        <JobFiltersRow
+          grouped={grouped}
+          tradeFilter={tradeFilter}
+          radius={radius}
+          onTradeChange={setTradeFilter}
+          onRadiusChange={setRadius}
+          onRefresh={fetchJobs}
+        />
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

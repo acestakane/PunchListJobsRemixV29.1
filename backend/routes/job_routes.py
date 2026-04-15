@@ -744,7 +744,54 @@ async def approve_crew_complete(
     return {"message": "Crew completion approved", "job_completed": job_completed}
 
 
-@router.post("/{job_id}/crew/{crew_id}/remove")
+@router.get("/{job_id}/assignments")
+async def get_job_assignments(
+    job_id: str, current_user: dict = Depends(get_current_user)
+):
+    """
+    Admin audit endpoint: returns all crew assignments for a job,
+    enriched with crew user profiles. Accessible by admins or the job's contractor.
+    """
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    is_admin = current_user["role"] in ("admin", "superadmin")
+    is_owner = job["contractor_id"] == current_user["id"]
+    if not is_admin and not is_owner:
+        raise HTTPException(status_code=403, detail="Not authorised")
+
+    assignments = await db.crew_assignments.find(
+        {"job_id": job_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(200)
+
+    # Enrich each assignment with crew profile fields
+    enriched = []
+    for a in assignments:
+        crew = await db.users.find_one(
+            {"id": a["crew_id"]},
+            {"_id": 0, "name": 1, "email": 1, "trade": 1, "discipline": 1, "rating": 1, "jobs_completed": 1, "profile_photo": 1},
+        )
+        enriched.append({
+            **a,
+            "crew_profile": crew or {},
+        })
+
+    # Also pull status_history for the job
+    history = await db.status_history.find(
+        {"job_id": job_id}, {"_id": 0}
+    ).sort("timestamp", 1).to_list(500)
+
+    return {
+        "job_id": job_id,
+        "job_title": job.get("title", ""),
+        "job_status": job.get("status", ""),
+        "assignments": enriched,
+        "status_history": history,
+    }
+
+
+
 async def remove_crew_from_job(
     job_id: str, crew_id: str, current_user: dict = Depends(get_current_user)
 ):
