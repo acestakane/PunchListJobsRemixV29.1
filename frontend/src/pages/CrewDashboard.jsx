@@ -232,7 +232,7 @@ export default function CrewDashboard() {
       await axios.put(`${API}/users/online-status`, { is_online: newStatus });
       setIsOnline(newStatus);
       toast.success(newStatus ? "You are now Online — visible to contractors" : "You are now Offline");
-    } catch { toast.error("Failed to update status"); }
+    } catch (e) { toast.error("Failed to update status"); console.warn("Online status update failed:", e); }
   };
 
   const acceptJob = async (jobId) => {

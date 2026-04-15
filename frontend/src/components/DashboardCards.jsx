@@ -20,7 +20,7 @@ export default function DashboardCards({ cards = [], cols = 2 }) {
       {cards.map((card, i) => {
         const Icon = card.icon;
         return (
-          <div key={i}
+          <div key={card.label || card.type || i}
             className={`rounded-xl p-3 sm:p-4 text-center flex flex-col items-center gap-1 overflow-hidden ${card.bgClass || "bg-blue-50 dark:bg-blue-950"}`}
             data-testid={`dash-card-${card.label?.toLowerCase().replace(/\s+/g, "-")}`}>
             {Icon && <Icon className={`w-5 h-5 mb-0.5 flex-shrink-0 ${card.colorClass || "text-[#0000FF]"}`} />}

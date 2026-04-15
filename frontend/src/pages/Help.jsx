@@ -79,12 +79,13 @@ export default function Help() {
               // Normalise: CMS uses {question,answer}, internal uses {q,a}
               setFaqs(parsed.map(f => ({ q: f.q || f.question || "", a: f.a || f.answer || "" })));
             }
-          } catch {
+          } catch (e) {
+            console.warn("Help.jsx: CMS content is not JSON, using default FAQs", e);
             // Content is HTML/text, keep default FAQs
           }
         }
       })
-      .catch(() => {})
+      .catch((e) => console.warn("Help.jsx: Failed to load CMS content", e))
       .finally(() => setLoading(false));
   }, []);
 
@@ -158,7 +159,7 @@ export default function Help() {
         ) : (
           <div className="space-y-2" data-testid="faq-list">
             {filtered.map((f, i) => (
-              <FAQItem key={i} q={f.q} a={f.a} brand={brand} />
+              <FAQItem key={f.q} q={f.q} a={f.a} brand={brand} />
             ))}
           </div>
         )}

@@ -16,6 +16,7 @@ import { ConfirmArchiveModal } from "../components/contractor/ConfirmArchiveModa
 import { ApplicantsPanel } from "../components/contractor/ApplicantsPanel";
 import { CancelRequestsPanel } from "../components/contractor/CancelRequestsPanel";
 import { ProfileCompletionPopup } from "../components/ProfileCompletionPopup";
+import { useRatingSubmit } from "../components/contractor/useRatingSubmit";
 import { toast } from "sonner";
 import axios from "axios";
 import {
@@ -66,9 +67,6 @@ export default function ContractorDashboard() {
   const [applicantDetails, setApplicantDetails] = useState({});
   const [cancelReqJob, setCancelReqJob] = useState(null);
   const [pubSettings, setPubSettings] = useState({});
-  const [ratingSubmitting, setRatingSubmitting] = useState(false);
-
-  // ─── Data fetchers ──────────────────────────────────────────────────────────
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -76,6 +74,10 @@ export default function ContractorDashboard() {
       setJobs(res.data);
     } catch (e) { console.error(e); }
   }, []);
+
+  const { submitRatings, ratingSubmitting } = useRatingSubmit({
+    onSuccess: () => { setRatingJob(null); setRatingCrewNames({}); fetchJobs(); }
+  });
 
   const fetchCrew = useCallback(async () => {
     try {
@@ -122,7 +124,7 @@ export default function ContractorDashboard() {
     try {
       const res = await axios.get(`${API}/jobs/${jobId}/applicants`);
       setApplicantDetails(prev => ({ ...prev, [jobId]: res.data }));
-    } catch { /* ignore */ }
+    } catch (e) { console.warn("fetchApplicants failed (non-critical):", e); }
   }, []);
 
   useEffect(() => {
@@ -205,7 +207,7 @@ export default function ContractorDashboard() {
           const fd = new FormData();
           images.forEach(f => fd.append("files", f));
           await axios.post(`${API}/jobs/${res.data.id}/images`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-        } catch { /* image upload failure is non-fatal */ }
+        } catch (e) { console.warn("Job image upload failed (non-fatal):", e); }
       }
       const msg = jobForm.is_emergency ? "Emergency alert sent! Crew will be notified." : "Job posted! Workers will be notified instantly.";
       toast.success(msg);
@@ -260,138 +262,6 @@ export default function ContractorDashboard() {
     () => setConfirmDeleteId(null)
   );
 
-  const submitRatings = async (job, ratings, reviews, skippedSet = new Set()) => {
-    if (!job?.id) {
-      toast.error("Invalid job data");
-      return;
-    }
-
-    // Prevent double submission
-    if (ratingSubmitting) {
-      toast.warning("Rating submission in progress...");
-      return;
-    }
-
-    // Validation: Ensure at least one action (rate or skip) for each crew member
-    const crewAccepted = job.crew_accepted || [];
-    if (crewAccepted.length === 0) {
-      toast.error("No crew members to rate");
-      return;
-    }
-
-    // Check if at least one crew member has been handled (rated or skipped)
-    const hasRating = crewAccepted.some(crewId => (ratings[crewId] || 0) > 0);
-    const hasSkip = skippedSet.size > 0;
-    const allHandled = crewAccepted.every(crewId => 
-      (ratings[crewId] || 0) > 0 || skippedSet.has(crewId)
-    );
-
-    if (!hasRating && !hasSkip) {
-      toast.error("Please rate or skip at least one crew member");
-      return;
-    }
-
-    setRatingSubmitting(true);
-
-    try {
-      let ratedCount = 0;
-      let skippedCount = 0;
-      const errors = [];
-
-      // Rate crew members with a star selection that aren't marked as skipped
-      for (const crewId of crewAccepted) {
-        if (!crewId) continue;
-        const stars = ratings[crewId] || 0;
-        
-        if (stars > 0 && !skippedSet.has(crewId)) {
-          // Validate stars range before sending
-          if (stars < 1 || stars > 5) {
-            errors.push(`Invalid rating (${stars} stars) for crew member`);
-            continue;
-          }
-
-          try {
-            await axios.post(`${API}/jobs/${job.id}/rate`, {
-              rated_id: crewId, 
-              job_id: job.id, 
-              stars, 
-              review: reviews[crewId] || "",
-            });
-            ratedCount++;
-          } catch (e) {
-            // Already rated = idempotent — ignore; other errors capture
-            const errorMsg = e?.response?.data?.detail || "";
-            if (errorMsg.includes("Already rated") || errorMsg.includes("Already handled")) {
-              ratedCount++; // Count as success (idempotent)
-            } else if (errorMsg.includes("not pending review") || errorMsg.includes("not completed")) {
-              errors.push("Job must be completed before rating");
-              throw e; // Stop processing
-            } else {
-              errors.push(`Failed to rate crew member: ${errorMsg}`);
-            }
-          }
-        }
-      }
-
-      // Skip all crew that were not rated (either explicitly skipped or left unstarred)
-      for (const crewId of crewAccepted) {
-        if (!crewId) continue;
-        const stars = ratings[crewId] || 0;
-        
-        if (stars === 0 || skippedSet.has(crewId)) {
-          try {
-            await axios.post(`${API}/jobs/${job.id}/rate/skip`, { crew_id: crewId });
-            skippedCount++;
-          } catch (e) {
-            const errorMsg = e?.response?.data?.detail || "";
-            // Already skipped/rated — ignore
-            if (errorMsg.includes("Already") || errorMsg.includes("cannot skip")) {
-              skippedCount++; // Count as success (idempotent)
-            } else {
-              // Non-critical error, log but continue
-              console.warn(`Skip failed for ${crewId}:`, errorMsg);
-            }
-          }
-        }
-      }
-
-      // Final validation
-      if (errors.length > 0) {
-        toast.error(`Rating errors: ${errors.join(", ")}`);
-        return;
-      }
-
-      if (ratedCount === 0 && skippedCount === 0) {
-        toast.warning("No ratings were submitted. Please try again.");
-        return;
-      }
-
-      // Success feedback
-      const feedback = [];
-      if (ratedCount > 0) feedback.push(`${ratedCount} rated`);
-      if (skippedCount > 0) feedback.push(`${skippedCount} skipped`);
-      
-      toast.success(`Ratings submitted! (${feedback.join(", ")})`);
-      setRatingJob(null);
-      setRatingCrewNames({});
-      fetchJobs();
-    } catch (e) {
-      const errorDetail = getErr(e, "Failed to submit ratings");
-      
-      // Provide specific error guidance
-      if (errorDetail.includes("not completed") || errorDetail.includes("pending review")) {
-        toast.error("Job must be verified complete before rating crew");
-      } else if (errorDetail.includes("Not part of this job")) {
-        toast.error("You are not authorized to rate this job");
-      } else if (errorDetail.includes("network") || errorDetail.includes("timeout")) {
-        toast.error("Network error. Please check your connection and retry.");
-      } else {
-        toast.error(errorDetail);
-      }
-    } finally {
-      setRatingSubmitting(false);
-    }
-  };
 
   // (cancelJob, suspendJob, reactivateJob, deleteJobConfirmed, archiveCancelledJob consolidated above via jobAction)
 

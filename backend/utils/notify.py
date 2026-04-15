@@ -5,8 +5,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Push is imported lazily to avoid circular imports
-_push_utils = None
+# Lazily loaded push helper — avoids circular imports.
+# Explicitly typed so static analysers don't flag "possibly unbound".
+_push_utils = None  # type: ignore[assignment]
 
 def _get_push():
     global _push_utils

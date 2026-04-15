@@ -177,7 +177,7 @@ export function ItineraryCard({ job, isSelected, dimmed, onSelect, role, onTaskC
                   const actorKey = isContractorRole ? "contractor" : userId;
                   const checked = !!(job.task_completions?.[actorKey]?.[idx]);
                   return (
-                    <li key={idx} className="flex items-center gap-2 cursor-pointer group"
+                    <li key={`task-${idx}`} className="flex items-center gap-2 cursor-pointer group"
                       onClick={e => { e.stopPropagation(); onTaskCheck && onTaskCheck(job.id, idx, !checked); }}
                       data-testid={`task-check-${job.id}-${idx}`}>
                       {checked

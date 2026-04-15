@@ -170,9 +170,9 @@ export function ProfilePreviewModal({ userId, onClose }) {
             <div className="mb-6">
               <h4 className="font-bold text-sm text-[#050A30] dark:text-white mb-2">Skills</h4>
               <div className="flex flex-wrap gap-2">
-                {profile.skills.map((skill, idx) => (
+                {profile.skills.map((skill) => (
                   <span 
-                    key={idx}
+                    key={skill}
                     className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full text-xs font-semibold"
                   >
                     {skill}
@@ -190,8 +190,8 @@ export function ProfilePreviewModal({ userId, onClose }) {
                 Portfolio ({profile.portfolio_images.length})
               </h4>
               <div className="grid grid-cols-3 gap-3">
-                {profile.portfolio_images.slice(0, 6).map((img, idx) => (
-                  <div key={idx} className="aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
+                {profile.portfolio_images.slice(0, 6).map((img) => (
+                  <div key={img} className="aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
                     <img 
                       src={getImageUrl(img)} 
                       alt={`Portfolio ${idx + 1}`}

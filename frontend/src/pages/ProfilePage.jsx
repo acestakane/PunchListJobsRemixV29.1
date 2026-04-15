@@ -7,11 +7,15 @@ import { getErr } from "../utils/errorUtils";
 import DisciplineSelect from "../components/DisciplineSelect";
 import TradeSelect from "../components/TradeSelect";
 import { ProfilePreviewModal } from "../components/ProfilePreviewModal";
+import { ProfileAvatarCard } from "../components/profile/ProfileAvatarCard";
+import { ProfileRatingsSection } from "../components/profile/ProfileRatingsSection";
+import { ProfilePortfolioSection } from "../components/profile/ProfilePortfolioSection";
+import { ProfileBoostCard } from "../components/profile/ProfileBoostCard";
 import { SocialShareButtons } from "../components/profile/SocialShareButtons";
 import axios from "axios";
 import {
-  Camera, Star, Gift, Copy, Check, Edit2, Save, MapPin, Phone, ClipboardList,
-  User, Plus, X, Eye, Zap, ImagePlus, Trash2
+  Gift, Copy, Check, Edit2, Save, MapPin, Phone, ClipboardList,
+  User, Plus, X, Eye
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -409,98 +413,20 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left - Profile Card */}
           <div className="lg:col-span-1 space-y-4">
-            <div className="card p-6 text-center">
-              <div className="relative w-fit mx-auto mb-4">
-                <div className="w-24 h-24 rounded-full overflow-hidden bg-[#050A30] flex items-center justify-center border-4 border-[#7EC8E3]">
-                  {profilePhoto ? (
-                    <img
-                      src={getImageUrl(profilePhoto)}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                      onError={e => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
-                    />
-                  ) : null}
-                  <span
-                    className="text-white text-3xl font-extrabold"
-                    style={{ display: profilePhoto ? "none" : "flex" }}>
-                    {user?.name?.[0]?.toUpperCase()}
-                  </span>
-                </div>
-                <button onClick={() => fileRef.current?.click()}
-                  className="absolute bottom-0 right-0 w-8 h-8 bg-[#0000FF] rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700"
-                  data-testid="upload-photo-btn">
-                  <Camera className="w-4 h-4 text-white" />
-                </button>
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-              </div>
-
-              <h2 className="font-extrabold text-[#050A30] dark:text-white text-xl" style={{ fontFamily: "Manrope, sans-serif" }}>{user?.name}</h2>
-              <p className="text-slate-500 text-sm capitalize">{user?.role}{user?.trade ? ` · ${user.trade}` : ""}</p>
-
-              <div className="flex items-center justify-center gap-1 mt-2">
-                {[1,2,3,4,5].map(s => (
-                  <Star key={s} className={`w-4 h-4 ${s <= Math.round(user?.rating || 0) ? "text-amber-400 fill-current" : "text-slate-300"}`} />
-                ))}
-                <span className="text-sm text-slate-500 ml-1">({user?.rating_count || 0})</span>
-              </div>
-
-              <div className="mt-4">
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-500">Profile Completion</span>
-                  <span className="font-semibold text-[#0000FF]">{profileCompletion}%</span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 mb-3">
-                  <div className="bg-[#0000FF] h-2 rounded-full transition-all" style={{ width: `${profileCompletion}%` }} />
-                </div>
-                {profileCompletion < 100 && missingFields.length > 0 && (
-                  <div className="text-left mt-1">
-                    <p className="text-[10px] text-slate-400 mb-1.5">Missing:</p>
-                    <div className="flex flex-wrap gap-1">
-                      {missingFields.map(f => (
-                        <span key={f.key} className="text-[10px] bg-red-50 dark:bg-red-900/20 text-red-500 px-1.5 py-0.5 rounded font-semibold">
-                          {f.label}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mt-4">
-                <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-2">
-                  <div className="text-xl font-extrabold text-[#0000FF]">{user?.jobs_completed || 0}</div>
-                  <div className="text-xs text-slate-500">Jobs Done</div>
-                </div>
-                <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-2">
-                  <div className="text-xl font-extrabold text-amber-500">{user?.points || 0}</div>
-                  <div className="text-xs text-slate-500">Points</div>
-                </div>
-              </div>
-              {(user?.profile_views > 0) && (
-                <div className="mt-3 flex items-center justify-center gap-1.5 text-slate-400 text-xs">
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>{user.profile_views} profile view{user.profile_views !== 1 ? "s" : ""}</span>
-                </div>
-              )}
-
-              {user?.availability !== undefined && (
-                <div className="mt-3 flex items-center justify-between bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                  <span className="text-sm font-semibold text-[#050A30] dark:text-white">
-                    {user.availability ? "Visible on Map" : "Hidden from Map"}
-                  </span>
-                  <div
-                    className={`w-12 h-6 rounded-full flex items-center px-1 cursor-pointer transition-colors ${user.availability ? "bg-emerald-500" : "bg-slate-300"}`}
-                    onClick={async () => {
-                      const newVal = !user.availability;
-                      await axios.put(`${API}/users/profile`, { availability: newVal });
-                      updateUser({ availability: newVal });
-                    }}
-                    data-testid="availability-toggle">
-                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${user.availability ? "translate-x-6" : ""}`} />
-                  </div>
-                </div>
-              )}
-            </div>
+            <ProfileAvatarCard
+              user={user}
+              profilePhoto={profilePhoto}
+              getImageUrl={getImageUrl}
+              profileCompletion={profileCompletion}
+              missingFields={missingFields}
+              fileRef={fileRef}
+              onPhotoUpload={handlePhotoUpload}
+              onToggleAvailability={async () => {
+                const newVal = !user.availability;
+                await axios.put(`${API}/users/profile`, { availability: newVal });
+                updateUser({ availability: newVal });
+              }}
+            />
 
             {/* Referral Card */}
             {referralInfo && (
@@ -785,106 +711,20 @@ export default function ProfilePage() {
             </div>
 
             {/* Recent Ratings */}
-            {ratings.length > 0 && (
-              <div className="card p-6">
-                <h3 className="font-bold text-[#050A30] dark:text-white text-lg mb-4" style={{ fontFamily: "Manrope, sans-serif" }}>Recent Reviews</h3>
-                <div className="space-y-3">
-                  {ratings.slice(0, 5).map(r => (
-                    <div key={r.id} className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
-                      <div className="flex items-center gap-1 mb-1">
-                        {[1,2,3,4,5].map(s => <Star key={s} className={`w-3.5 h-3.5 ${s <= r.stars ? "text-amber-400 fill-current" : "text-slate-300"}`} />)}
-                      </div>
-                      {r.review && <p className="text-sm text-slate-600 dark:text-slate-300">{r.review}</p>}
-                      <p className="text-xs text-slate-400 mt-1">{new Date(r.created_at).toLocaleDateString()}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <ProfileRatingsSection ratings={ratings} />
 
             {/* Portfolio */}
-            <div className="card p-6" data-testid="portfolio-section">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-bold text-[#050A30] dark:text-white text-lg" style={{ fontFamily: "Manrope, sans-serif" }}>Portfolio</h3>
-                  <p className="text-xs text-slate-400">{portfolio.length}/8 images</p>
-                </div>
-                {portfolio.length < 8 && (
-                  <button onClick={() => portfolioRef.current?.click()}
-                    disabled={uploadingPortfolio}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-[#050A30] text-white rounded-lg text-xs font-bold hover:bg-[#0a1240] disabled:opacity-60"
-                    data-testid="portfolio-upload-btn">
-                    <ImagePlus className="w-3.5 h-3.5" />
-                    {uploadingPortfolio ? "Uploading..." : "Add Photo"}
-                  </button>
-                )}
-                <input ref={portfolioRef} type="file" accept="image/*" className="hidden" onChange={uploadPortfolio} />
-              </div>
-
-              {portfolio.length === 0 ? (
-                <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-8 text-center">
-                  <ImagePlus className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm text-slate-400">Add photos of your work to attract more contractors</p>
-                  <button onClick={() => portfolioRef.current?.click()}
-                    className="mt-3 text-xs text-[#0000FF] font-semibold hover:underline"
-                    data-testid="portfolio-empty-upload-btn">
-                    Upload first photo
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {portfolio.map((url, i) => (
-                    <div key={url || i} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800" data-testid={`portfolio-img-${i}`}>
-                      <img
-                        src={getImageUrl(url)}
-                        alt={`Portfolio ${i + 1}`}
-                        className="w-full h-full object-cover"
-                        onError={e => { e.target.style.display = "none"; }}
-                      />
-                      <button onClick={() => removePortfolio(url)}
-                        className="absolute top-1 right-1 w-6 h-6 bg-black/60 text-white rounded-full items-center justify-center hidden group-hover:flex hover:bg-red-600 transition-colors"
-                        data-testid={`portfolio-remove-${i}`}>
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                  {portfolio.length < 8 && (
-                    <button onClick={() => portfolioRef.current?.click()}
-                      className="aspect-square rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400 hover:border-[#0000FF] hover:text-[#0000FF] transition-colors">
-                      <ImagePlus className="w-5 h-5 mb-1" />
-                      <span className="text-xs">Add</span>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+            <ProfilePortfolioSection
+              portfolio={portfolio}
+              portfolioRef={portfolioRef}
+              uploadingPortfolio={uploadingPortfolio}
+              onUpload={uploadPortfolio}
+              onRemove={removePortfolio}
+              getImageUrl={getImageUrl}
+            />
 
             {/* Profile Boost */}
-            <div className="card p-5" data-testid="boost-section">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap className={`w-4 h-4 ${boostStatus?.is_boosted ? "text-amber-500 fill-current" : "text-slate-400"}`} />
-                    <h3 className="font-bold text-[#050A30] dark:text-white text-sm" style={{ fontFamily: "Manrope, sans-serif" }}>Profile Boost</h3>
-                    {boostStatus?.is_boosted && (
-                      <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">ACTIVE</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    {boostStatus?.is_boosted
-                      ? `Boosted until ${new Date(boostStatus.expires_at).toLocaleDateString()}`
-                      : `Get seen first by contractors for 7 days`}
-                  </p>
-                </div>
-                {!boostStatus?.is_boosted && (
-                  <button onClick={activateBoost}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-bold hover:bg-amber-600"
-                    data-testid="boost-activate-btn">
-                    <Zap className="w-3.5 h-3.5" /> Boost · ${(boostStatus?.price ?? 4.99).toFixed(2)}
-                  </button>
-                )}
-              </div>
-            </div>
+            <ProfileBoostCard boostStatus={boostStatus} onActivateBoost={activateBoost} />
           </div>
         </div>
       </div>

@@ -39,8 +39,8 @@ export function OnboardingStep2({
         )}
         {showSuggestions && suggestions.length > 0 && (
           <ul className="absolute z-50 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-            {suggestions.map((s, i) => (
-              <li key={i}
+            {suggestions.map((s) => (
+              <li key={s.full_address}
                 onMouseDown={() => onSuggestionSelect(s)}
                 className="flex items-start gap-2 px-3 py-2.5 cursor-pointer hover:bg-blue-50 dark:hover:bg-slate-700 border-b border-slate-100 dark:border-slate-700 last:border-0">
                 <MapPin className="w-3.5 h-3.5 text-[#0000FF] mt-0.5 flex-shrink-0" />

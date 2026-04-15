@@ -62,7 +62,7 @@ export default function AppSettingsPage() {
     if (stored) {
       try {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
-      } catch { }
+      } catch (e) { console.warn("AppSettings: corrupted stored settings, using defaults", e); }
     }
   }, []);
 
@@ -107,8 +107,9 @@ export default function AppSettingsPage() {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.6);
       toast.success("Sound test played!");
-    } catch {
+    } catch (e) {
       toast.error("Sound test failed. Check browser permissions.");
+      console.warn("Audio test error:", e);
     }
   };
 

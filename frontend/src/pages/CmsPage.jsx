@@ -75,8 +75,8 @@ export default function CmsPage() {
 
         {faqItems ? (
           <div className="space-y-3" data-testid="faq-list">
-            {faqItems.map((item, i) => (
-              <details key={i} className="border border-slate-200 dark:border-slate-700 rounded-xl group">
+            {faqItems.map((item) => (
+              <details key={item.question || item.id} className="border border-slate-200 dark:border-slate-700 rounded-xl group">
                 <summary className="px-5 py-4 font-semibold text-[#050A30] dark:text-white cursor-pointer list-none flex items-center justify-between text-sm">
                   {item.question}
                   <span className="text-slate-400 text-xs group-open:rotate-180 transition-transform">▼</span>

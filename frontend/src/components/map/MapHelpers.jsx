@@ -7,7 +7,7 @@ export function FlyTo({ target }) {
   const map = useMap();
   useEffect(() => {
     if (!map || !target) return;
-    try { map.flyTo([target.lat, target.lng], target.zoom ?? map.getZoom(), { duration: 1.2 }); } catch {}
+    try { map.flyTo([target.lat, target.lng], target.zoom ?? map.getZoom(), { duration: 1.2 }); } catch (e) { /* map not ready */ }
   }, [target, map]);
   return null;
 }
@@ -24,7 +24,7 @@ export function RecenterMap({ center }) {
   const map = useMap();
   useEffect(() => {
     if (!map || !center) return;
-    try { map.setView(center, map.getZoom()); } catch {}
+    try { map.setView(center, map.getZoom()); } catch (e) { /* map not ready */ }
   }, [center, map]);
   return null;
 }
@@ -36,7 +36,7 @@ export function AutoLocate({ onLocate }) {
     if (!map || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       ({ coords: { latitude: lat, longitude: lng } }) => {
-        try { map.flyTo([lat, lng], 12, { duration: 1.4 }); } catch {}
+        try { map.flyTo([lat, lng], 12, { duration: 1.4 }); } catch (e) { /* map not ready */ }
         onLocate?.({ lat, lng });
       },
       () => {}
@@ -63,9 +63,9 @@ export function RadiusCircle({ center, radiusKm }) {
         weight: 1.5,
         dashArray: "6 4",
       }).addTo(map);
-    } catch { /* map not ready */ }
+    } catch (e) { console.warn("RadiusCircle map not ready:", e); }
     return () => {
-      if (circleRef.current) { try { circleRef.current.remove(); } catch {} circleRef.current = null; }
+      if (circleRef.current) { try { circleRef.current.remove(); } catch (e) { /* map removed */ } circleRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center?.lat, center?.lng, radiusKm, map]);

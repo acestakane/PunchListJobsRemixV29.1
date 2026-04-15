@@ -6,7 +6,7 @@ from typing import List
 from database import db
 from auth import get_current_user, user_to_response
 from models import JobCreate, JobUpdate, TaskCheckRequest, DisputeCreate, OfferCreate
-from utils.geocoding import geocode_address, haversine_distance
+from utils.geocoding import geocode_address
 from utils.email_utils import send_job_completion_email
 from utils.matching import sort_jobs_for_crew
 from utils.subscription import check_and_enforce_limit, increment_usage
@@ -14,6 +14,7 @@ from utils.notify import create_notification
 from utils.activity_log import log_activity
 from utils.job_helpers import (
     RATING_VALID_STATUSES, ACTIVE_STATUSES, STALE_STATUSES,
+    build_list_jobs_query, annotate_jobs_with_distance, build_itinerary_query,
 )
 from utils.assignment_helpers import (
     get_assignment, get_or_create_assignment, update_assignment_status,
@@ -97,43 +98,19 @@ async def list_jobs(
     smart_match: Optional[bool] = False,
     current_user: dict = Depends(get_current_user)
 ):
-    query = {"is_hidden": {"$ne": True}, "is_archived": {"$ne": True}}
-
-    if current_user["role"] == "contractor":
-        # Contractors only see their own jobs
-        query["contractor_id"] = current_user["id"]
-    else:
-        # Crew sees only open jobs (fulfilled = fully staffed, belongs in Itinerary)
-        if status:
-            query["status"] = status
-        else:
-            query["status"] = "open"
-
-    if trade:
-        query["trade"] = trade
-    if discipline:
-        query["discipline"] = {"$regex": discipline, "$options": "i"}
-    if skill:
-        query["skill"] = {"$regex": skill, "$options": "i"}
-
+    query = build_list_jobs_query(
+        role=current_user["role"], user_id=current_user["id"],
+        status=status, trade=trade, discipline=discipline, skill=skill,
+    )
     jobs = await db.jobs.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
 
-    # Filter by radius if location provided, and annotate distance
-    if lat and lng:
-        filtered = []
-        for j in jobs:
-            if j.get("location") and j["location"].get("lat") and j["location"].get("lng"):
-                d = haversine_distance(lat, lng, j["location"]["lat"], j["location"]["lng"])
-                if d <= radius:
-                    j["distance_miles"] = round(d, 1)
-                    filtered.append(j)
-        jobs = filtered
+    # Annotate with GPS distance and filter to radius
+    jobs = annotate_jobs_with_distance(jobs, lat, lng, radius)
 
     # Smart matching for crew: weighted distance + trade + skills
     if smart_match and current_user["role"] == "crew" and jobs:
         jobs = sort_jobs_for_crew(
-            jobs,
-            current_user,
+            jobs, current_user,
             lat if (lat and lng) else None,
             lng if (lat and lng) else None,
             radius,
@@ -198,13 +175,11 @@ async def jobs_itinerary(current_user: dict = Depends(get_current_user)):
     )
 
     if role == "crew":
-        query = {"crew_accepted": uid, "status": {"$in": active_statuses},
-                 "is_archived": {"$ne": True}, "crew_archived": {"$ne": uid}}
+        query = build_itinerary_query(role, uid, active_statuses)
     elif role == "contractor":
-        query = {"contractor_id": uid, "crew_accepted": {"$exists": True, "$ne": []},
-                 "status": {"$in": active_statuses}, "is_archived": {"$ne": True}}
+        query = build_itinerary_query(role, uid, active_statuses)
     else:
-        query = {"status": {"$in": active_statuses}, "is_archived": {"$ne": True}}
+        query = build_itinerary_query(role, uid, active_statuses)
 
     jobs = await db.jobs.find(query, {"_id": 0}).sort("start_time", 1).to_list(200)
 
