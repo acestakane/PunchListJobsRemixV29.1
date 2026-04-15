@@ -44,7 +44,11 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - **`ContractorDashboard.jsx`**: approveCrewComplete helper, per-crew approval panel
 - Travel Radius: `travel_radius_miles` field in models.py, profile edit+view, crew search dropdown filter
 
-### Feb 2026 — P0 Security Fixes + P1 Component Refactor
+### Feb 2026 — P1 Feature Batch
+- **GET /api/jobs/{id}/assignments**: New admin audit endpoint — returns all crew assignments for a job enriched with crew profiles + full status_history log. Accessible by admin or job-owning contractor. Returns 403 for crew.
+- **WS job_completed_final → Rating Prompt**: `assignment_helpers.py` now includes `contractor_id`+`contractor_name` in the event payload. `JobsItinerary.jsx` listens via `useWebSocket.addListener` — auto-refreshes list + opens rating modal for crew. `CrewDashboard.jsx` shows toast + action button to navigate to /itinerary.
+- **auth_helpers.py**: Extracted `resolve_full_name()`, `generate_referral_code()`, `build_user_doc()` from auth_routes.py register() function (90→40 lines)
+- **Crew Dashboard Sub-components**: Extracted `CrewDashboardHeader.jsx`, `SubscriptionBanners.jsx`, `JobFiltersRow.jsx` from `CrewDashboard.jsx`
 - **P0 Bug Fix**: Fixed TDZ error (`can't access lexical declaration 'isCrew' before initialization`) in JobsItinerary.jsx — moved `isContractor`/`isCrew` declarations to top of component before derived computed values
 - **P0 Code Quality**: Removed 2 unused variables (F841) in job_routes.py and payment_routes.py; all Python/JS lints clean
 - **P1 Frontend Refactor** — extracted sub-components from large files:
@@ -63,9 +67,12 @@ Pull GitHub repository (PunchListJobsRemixV27) and run as a standalone applicati
 - None
 
 ### P1 — High Priority
-- Add `/api/jobs/{id}/assignments` GET endpoint for admin audit view
-- Wire WebSocket `job_completed_final` event to trigger rating prompt in Itinerary
-- Component Refactor Phase 2: Further split CrewDashboard.jsx + auth_routes.py register()
+- None outstanding (all P1s complete)
+
+### P2 — Medium Priority
+- Add `status_history` tab to Admin Job detail view (uses the new /assignments endpoint data)
+- Square live keys when ready
+- Email: configure SMTP credentials (currently mocked)
 
 ### P2 — Medium Priority
 - Add `status_history` tab to Admin Job detail view
